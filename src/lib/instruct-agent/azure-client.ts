@@ -1,42 +1,13 @@
-import OpenAI from 'openai';
-// Remove unused import
-// import { ChatMessage } from '../types';
+import ModelClient, { isUnexpected } from "@azure-rest/ai-inference";
+import { AzureKeyCredential } from "@azure/core-auth";
 
-// Comment out unused type
-// type OpenAIChatRole = 'system' | 'user' | 'assistant';
-
-// Comment out unused interface
-// interface OpenAIChatMessage {
-//   role: OpenAIChatRole;
-//   content: string;
-// }
-
-export const createChatClient = (endpoint: string, apiKey: string) => {
-  console.log('Creating chat client with endpoint:', endpoint);
-  
-  try {
-    return new OpenAI({ 
-      baseURL: endpoint,
-      apiKey: apiKey,
-      dangerouslyAllowBrowser: false // 确保不在浏览器中使用API密钥
-    });
-  } catch (error) {
-    console.error('Error creating OpenAI client:', error);
-    throw error;
-  }
+// Generic ModelClient builder for GitHub inference endpoint
+export const createModelClient = (endpoint: string, apiKey: string) => {
+  console.log('Creating ModelClient with endpoint:', endpoint);
+  return ModelClient(endpoint, new AzureKeyCredential(apiKey));
 };
 
-// Comment out unused interface
-// interface BingSearchResponse {
-//   webPages?: {
-//     value: Array<{
-//       name: string;
-//       url: string;
-//       snippet: string;
-//     }>;
-//   };
-// }
-
+// Restore search client export for web search usage
 export const createSearchClient = (apiKey: string) => {
   return {
     async call(query: string) {
@@ -51,3 +22,6 @@ export const createSearchClient = (apiKey: string) => {
     }
   };
 };
+
+// Forward isUnexpected for response error checking
+export { isUnexpected };

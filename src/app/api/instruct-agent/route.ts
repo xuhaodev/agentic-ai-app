@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
-import { createChatClient, createSearchClient } from '@/lib/instruct-agent/azure-client';
+import { createSearchClient, createModelClient, isUnexpected } from '@/lib/instruct-agent/azure-client';
 import { ChatMessage } from '@/lib/types';
 import { getToolById } from '@/lib/instruct-agent/tools-config';
+import OpenAI from 'openai';
 
 // Using Edge runtime for improved performance with streaming responses
 export const runtime = 'edge';
@@ -47,130 +48,53 @@ export async function POST(req: NextRequest) {
         const encoder = new TextEncoder();
         
         try {
-          // Initialize clients
-          const client = createChatClient(
-            process.env.AZURE_OPENAI_ENDPOINT!,
-            process.env.OPENAI_API_KEY!
-          );
+          // 客户端在此不初始化，后面按模型分类调用
 
-          const searchClient = webSearchEnabled ? createSearchClient(
-            process.env.TAVILY_API_KEY!
-          ) : null;
-
-          // Get web search results (if enabled)
-          let webResults = '';
-          if (webSearchEnabled && searchClient) {
-            try {
-              const searchResults = await searchClient.call(prompt);
-              // Limit to top 3 results
-              const top3Results = searchResults.slice(0, 3);
-              
-              // Log each individual search result
-              console.log(`Found ${searchResults.length} results, using top 3:`);
-              
-              // Add this interface definition before the forEach call
-              interface SearchResult {
-                title: string;
-                url: string;
-                content: string;
-                // Add any other properties that might be present in search results
-              }
-
-              // Then update the forEach loop with proper type annotation
-              top3Results.forEach((result: SearchResult, index: number) => {
-                console.log(`[${index + 1}] Title: ${result.title}`);
-                console.log(`    URL: ${result.url}`);
-                console.log(`    Content: ${result.content.substring(0, 100)}...`);
-              });
-              
-              // Format the top 3 results for inclusion in the message
-              webResults = top3Results.map((result: SearchResult) => 
-                `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`
-              ).join('\n\n');
-            } catch (error) {
-              console.error('Web search error:', error);
-            }
-          }
-
-          // Prepare final prompt - ensure document context is preserved when web search is used
-          let finalUserPrompt = prompt;
-          if (webResults) {
-            // When web search is enabled and document context exists, we need to preserve both
-            if (hasDocumentContext) {
-              // Split the prompt to separate document context from user query
-              const docContextStart = prompt.indexOf("==== DOCUMENT CONTEXT ====");
-              const docContextEnd = prompt.indexOf("==== END OF DOCUMENT CONTEXT ====") + "==== END OF DOCUMENT CONTEXT ====".length;
-              
-              // Extract parts
-              const userQuery = prompt.substring(0, docContextStart).trim();
-              const docContext = prompt.substring(docContextStart, docContextEnd);
-              const finalInstructions = prompt.substring(docContextEnd).trim();
-              
-              // Combine with web results
-              finalUserPrompt = `Context from web search (top 3 results):\n${webResults}\n\n${docContext}\n\nUser query: ${userQuery}\n\n${finalInstructions}`;
-              
-              console.log("Combined document context and web search results");
-            } else {
-              // Just web search, no document context
-              finalUserPrompt = `Context from web search (top 3 results):\n${webResults}\n\nUser query: ${prompt}`;
-            }
-          }
-
-          // Prepare chat messages
-          const formattedMessages = [
-            // System prompt always comes first
-            { role: 'system', content: systemPrompt },
-            // Add message history (excluding system messages)
-            ...messages.filter((m: ChatMessage) => m.role !== 'system').map((msg: ChatMessage) => ({
-              role: msg.role as "system" | "user" | "assistant",
-              content: msg.content
-            })),
-            // Add current user message with context (if any)
-            { 
-              role: 'user', 
-              content: finalUserPrompt
-            }
+          // Prepare messages for the API call
+          const formattedMessages: ChatMessage[] = [
+            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+            ...messages,
+            { role: 'user', content: prompt }
           ];
 
-          console.log('Final chat messages:');
-          formattedMessages.slice(0, Math.min(3, formattedMessages.length)).forEach((msg, i) => {
-            console.log(`[${i}] ${msg.role}: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
-          });
-          
-          // Log the total length of the prompt to help diagnose truncation issues
-          console.log(`Full prompt length: ${finalUserPrompt.length} characters`);
-
-          // Create streaming chat completion
-          const openAIStream = await client.chat.completions.create({
-            model: model,
-            messages: formattedMessages,
-            stream: true,
-            stream_options: { include_usage: true }
-          });
-
-          // 处理返回的流
-          let usage = null;
-          for await (const part of openAIStream) {
-            const content = part.choices[0]?.delta?.content || '';
-            if (content) {
-              console.log(`Streaming content chunk: "${content}"`);
-              
-              // 发送文本内容，确保使用JSON格式化，保持SSE格式规范
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(content)}\n\n`));
+          // 根据模型类型调用不同客户端
+          let reply: string;
+          // 所有含 '/' 的模型（openai/*, deepseek/* 等）都走 GitHub inference
+          const isGitHubModel = model.includes('/');
+          if (isGitHubModel) {
+            // GitHub OpenAI 模型，使用官方 SDK
+            const openaiClient = new OpenAI({ baseURL: process.env.GITHUB_INFERENCE_ENDPOINT!, apiKey: process.env.GITHUB_TOKEN! });
+            const ghRes = await openaiClient.chat.completions.create({
+              model: model,
+              messages: formattedMessages,
+              temperature: 1.0,
+              top_p: 1.0
+            });
+            reply = ghRes.choices[0].message.content ?? '';
+          } else {
+            // Azure OpenAI 模型，使用 REST 客户端调用
+            const azureClient = createModelClient(
+              process.env.AZURE_OPENAI_ENDPOINT!,
+              process.env.OPENAI_API_KEY!
+            );
+            const azRes = await azureClient.path('/chat/completions').post({
+              queryParameters: { 'api-version': '2024-12-01-preview' },
+              body: {
+                model,
+                messages: formattedMessages,
+                temperature: 1.0,
+                top_p: 1.0
+              }
+            });
+            if (isUnexpected(azRes)) {
+              const errMsg = (azRes.body as any).error?.message || JSON.stringify(azRes.body);
+              throw new Error(errMsg);
             }
-
-            if (part.usage) {
-              usage = part.usage;
-            }
+            reply = azRes.body.choices[0].message.content ?? '';
           }
-
-          // 记录使用情况统计
-          if (usage) {
-            console.log(`Usage Statistics - Prompt tokens: ${usage.prompt_tokens}, Completion tokens: ${usage.completion_tokens}, Total tokens: ${usage.total_tokens}`);
-          }
-
-          // 完成后关闭流
-          controller.close();
+           // Send the assistant reply as one SSE event
+           controller.enqueue(encoder.encode(`data: ${JSON.stringify(reply)}\n\n`));
+           controller.close();
         } catch (error) {
           console.error('Streaming error:', error);
           const errorMessage = error instanceof Error ? error.message : 'Unknown streaming error';

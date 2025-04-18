@@ -86,25 +86,41 @@ share sth. with sb., 一些来参观的学生`
 
 export const models: Model[] = [
     {
-        id: 'gpt-4o-mini',
+        id: 'openai/gpt-4.1',
+        name: 'gpt-4.1'
+    },
+    {
+        id: 'openai/gpt-4.1-mini',
+        name: 'gpt-4.1-mini'
+    },
+    {
+        id: 'openai/o3',
+        name: 'o3'
+    },
+    {
+        id: 'openai/o4-mini',
+        name: 'o4-mini'
+    },
+    {
+        id: 'deepseek/DeepSeek-V3-0324',
+        name: 'DeepSeek-V3-0324'
+    },
+    {
+        id: 'deepseek/DeepSeek-R1',
+        name: 'Deepseek-R1'
+    },
+    {
+        id: 'microsoft/MAI-DS-R1',
+        name: 'MAI-DS-R1'
+    },
+    {
+        id: 'openai/gpt-4o-mini',
         name: 'gpt-4o-mini'
     },
     {
-        id: 'gpt-4o',
+        id: 'openai/gpt-4o',
         name: 'gpt-4o'
     },
-    {
-        id: 'o3-mini',
-        name: 'o3-Mini'
-    },
-    {
-        id: 'deepseek-v3',
-        name: 'deepseek-v3'
-    },
-    {
-        id: 'deepseek-r1',
-        name: 'Deepseek-R1'
-    }
 ];
 
 export function getToolById(id: string) {
