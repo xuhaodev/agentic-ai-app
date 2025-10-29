@@ -67,7 +67,31 @@ export default function InstructAgentPage() {
 
   useEffect(() => {
     const tool = tools.find(t => t.id === selectedTool.id);
-    if (tool) setSystemPrompt(tool.systemPrompt);
+    if (tool) {
+      setSystemPrompt(tool.systemPrompt);
+      
+      // Add welcome message for Prompt Generator
+      if (tool.id === 'lyra-prompt') {
+        const welcomeMessage: ChatMessage = {
+          role: 'assistant',
+          content: `Hello! I'm AI prompt optimizer. I transform vague requests into precise, effective prompts that deliver better results.
+
+**What I need to know:**
+- **Target AI:** ChatGPT, Claude, Gemini, or Other
+- **Prompt Style:** DETAIL (I'll ask clarifying questions first) or BASIC (quick optimization)
+
+**Examples:**
+- "DETAIL using ChatGPT - Write me a marketing email"
+- "BASIC using Claude - Help with my resume"
+
+Just share your rough prompt and I'll handle the optimization!`
+        };
+        setMessages([welcomeMessage]);
+      } else {
+        // Clear messages when switching to other tools
+        setMessages([]);
+      }
+    }
   }, [selectedTool]);
 
   // Scroll to bottom when messages change

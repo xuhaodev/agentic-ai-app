@@ -4,7 +4,6 @@
 
 **Live Demo**: [https://agent.haxu.dev/](https://agent.haxu.dev/)
 
-
 ## Project Overview
 
 This project represents a new approach to software development - "Vibe Coding" - where the human author chats with AI agents to complete the entire development process collaboratively. The result is a multi-agent AI application with specialized components:
@@ -100,6 +99,7 @@ TAVILY_API_KEY=tvly-xxx # use your Tavily search api key
 
 LANGSMITH_API_KEY=lsv2_xxxx # use your Langsmith key
 AGENT_DEPLOYMENT_URL=https://xxxx.azurewebsites.net # refer to my MCP-Server project
+
 
 ```
 

@@ -58,40 +58,18 @@ export async function POST(req: NextRequest) {
           ];
 
           // 根据模型类型调用不同客户端
-          let reply: string;
-          // 所有含 '/' 的模型（openai/*, deepseek/* 等）都走 GitHub inference
-          const isGitHubModel = model.includes('/');
-          if (isGitHubModel) {
-            // GitHub OpenAI 模型，使用官方 SDK
-            const openaiClient = new OpenAI({ baseURL: process.env.GITHUB_INFERENCE_ENDPOINT!, apiKey: process.env.GITHUB_TOKEN! });
-            const ghRes = await openaiClient.chat.completions.create({
-              model: model,
-              messages: formattedMessages,
-              temperature: 1.0,
-              top_p: 1.0
-            });
-            reply = ghRes.choices[0].message.content ?? '';
-          } else {
-            // Azure OpenAI 模型，使用 REST 客户端调用
-            const azureClient = createModelClient(
-              process.env.AZURE_OPENAI_ENDPOINT!,
-              process.env.OPENAI_API_KEY!
-            );
-            const azRes = await azureClient.path('/chat/completions').post({
-              queryParameters: { 'api-version': '2024-12-01-preview' },
-              body: {
-                model,
-                messages: formattedMessages,
-                temperature: 1.0,
-                top_p: 1.0
-              }
-            });
-            if (isUnexpected(azRes)) {
-              const errMsg = (azRes.body as any).error?.message || JSON.stringify(azRes.body);
-              throw new Error(errMsg);
-            }
-            reply = azRes.body.choices[0].message.content ?? '';
-          }
+          // 使用 GitHub Models endpoint 调用
+          const openaiClient = new OpenAI({ 
+            baseURL: process.env.GITHUB_MODEL_ENDPOINT!, 
+            apiKey: process.env.GITHUB_TOKEN! 
+          });
+          
+          const ghRes = await openaiClient.chat.completions.create({
+            model: model,
+            messages: formattedMessages
+          });
+          
+          const reply = ghRes.choices[0].message.content ?? '';
            // Send the assistant reply as one SSE event
            controller.enqueue(encoder.encode(`data: ${JSON.stringify(reply)}\n\n`));
            controller.close();
