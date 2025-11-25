@@ -1,16 +1,19 @@
 import { NextRequest } from 'next/server';
-import { createChatClient, createSearchClient } from '@/lib/instruct-agent/azure-client';
+import { createChatClient } from '@/lib/instruct-agent/azure-client';
 import { ChatMessage } from '@/lib/types';
-import { getToolById } from '@/lib/instruct-agent/tools-config';
+import { getToolById } from '@/lib/instruct-agent/tools-service';
 
 // Using Edge runtime for improved performance with streaming responses
 export const runtime = 'edge';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, systemPrompt, prompt, tool, model, webSearchEnabled } = await req.json();
+    const { messages, systemPrompt, prompt, tool, model, imageAttachments = [] } = await req.json();
 
-    if (!messages || !prompt || !tool || !model) {
+    const hasPrompt = typeof prompt === 'string' && prompt.trim().length > 0;
+    const hasImageAttachments = Array.isArray(imageAttachments) && imageAttachments.length > 0;
+
+    if (!messages || (!hasPrompt && !hasImageAttachments) || !tool || !model) {
       return new Response(
         JSON.stringify({ error: 'Missing required parameters' }),
         { 
@@ -21,7 +24,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Get the selected tool and system prompt
-    const selectedTool = getToolById(tool);
+    const selectedTool = await getToolById(tool);
+    if (!selectedTool) {
+      return new Response(
+        JSON.stringify({ error: 'Selected tool not found' }),
+        {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
     console.log(`Selected tool: ${selectedTool.name}, System Prompt:`, systemPrompt);
     
     // Check if prompt contains document context
@@ -48,73 +60,80 @@ export async function POST(req: NextRequest) {
         
         try {
           // Initialize clients
-          const client = createChatClient(
-            process.env.AZURE_OPENAI_ENDPOINT!,
-            process.env.OPENAI_API_KEY!
-          );
+          const endpoint = process.env.GITHUB_MODEL_ENDPOINT ?? 'https://models.github.ai/inference';
+          const token = process.env.GITHUB_TOKEN;
 
-          const searchClient = webSearchEnabled ? createSearchClient(
-            process.env.TAVILY_API_KEY!
-          ) : null;
+          if (!token) {
+            throw new Error('Missing GITHUB_TOKEN environment variable.');
+          }
 
-          // Get web search results (if enabled)
-          let webResults = '';
-          if (webSearchEnabled && searchClient) {
-            try {
-              const searchResults = await searchClient.call(prompt);
-              // Limit to top 3 results
-              const top3Results = searchResults.slice(0, 3);
-              
-              // Log each individual search result
-              console.log(`Found ${searchResults.length} results, using top 3:`);
-              
-              // Add this interface definition before the forEach call
-              interface SearchResult {
-                title: string;
-                url: string;
-                content: string;
-                // Add any other properties that might be present in search results
+          const client = createChatClient(endpoint, token);
+
+          const normalizedPrompt = typeof prompt === 'string' ? prompt : '';
+          const finalUserPrompt = normalizedPrompt;
+
+          type IncomingImageAttachment = {
+            base64?: string;
+            mimeType?: string;
+            dataUrl?: string;
+            name?: string;
+          };
+
+          const normalizedImageAttachments = Array.isArray(imageAttachments) ? imageAttachments : [];
+          const userContentParts: Array<
+            { type: 'text'; text: string } |
+            { type: 'image_url'; image_url: { url: string; detail?: 'auto' | 'low' | 'high' } }
+          > = [];
+
+          if (finalUserPrompt.trim().length > 0) {
+            userContentParts.push({ type: 'text', text: finalUserPrompt });
+          }
+
+          const attachmentsForProcessing = normalizedImageAttachments as Array<Partial<IncomingImageAttachment>>;
+
+          const resolvedImageAttachments = attachmentsForProcessing
+            .map((attachment, index) => {
+              if (!attachment) {
+                return null;
               }
 
-              // Then update the forEach loop with proper type annotation
-              top3Results.forEach((result: SearchResult, index: number) => {
-                console.log(`[${index + 1}] Title: ${result.title}`);
-                console.log(`    URL: ${result.url}`);
-                console.log(`    Content: ${result.content.substring(0, 100)}...`);
-              });
-              
-              // Format the top 3 results for inclusion in the message
-              webResults = top3Results.map((result: SearchResult) => 
-                `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`
-              ).join('\n\n');
-            } catch (error) {
-              console.error('Web search error:', error);
-            }
+              const { base64, mimeType, dataUrl } = attachment;
+
+              if (typeof dataUrl === 'string' && dataUrl.startsWith('data:')) {
+                console.log(`Using provided data URL for image attachment #${index + 1}`);
+                return { url: dataUrl };
+              }
+
+              if (typeof base64 === 'string' && base64.trim().length > 0) {
+                const resolvedMime = typeof mimeType === 'string' && mimeType ? mimeType : 'image/jpeg';
+                const url = `data:${resolvedMime};base64,${base64}`;
+                console.log(`Constructed data URL for image attachment #${index + 1} with mime type ${resolvedMime}`);
+                return { url };
+              }
+
+              console.warn(`Image attachment #${index + 1} missing base64 data; skipping.`);
+              return null;
+            })
+            .filter((entry): entry is { url: string } => Boolean(entry));
+
+          if (resolvedImageAttachments.length > 0) {
+            console.log(`Including ${resolvedImageAttachments.length} image attachment(s) in request.`);
           }
 
-          // Prepare final prompt - ensure document context is preserved when web search is used
-          let finalUserPrompt = prompt;
-          if (webResults) {
-            // When web search is enabled and document context exists, we need to preserve both
-            if (hasDocumentContext) {
-              // Split the prompt to separate document context from user query
-              const docContextStart = prompt.indexOf("==== DOCUMENT CONTEXT ====");
-              const docContextEnd = prompt.indexOf("==== END OF DOCUMENT CONTEXT ====") + "==== END OF DOCUMENT CONTEXT ====".length;
-              
-              // Extract parts
-              const userQuery = prompt.substring(0, docContextStart).trim();
-              const docContext = prompt.substring(docContextStart, docContextEnd);
-              const finalInstructions = prompt.substring(docContextEnd).trim();
-              
-              // Combine with web results
-              finalUserPrompt = `Context from web search (top 3 results):\n${webResults}\n\n${docContext}\n\nUser query: ${userQuery}\n\n${finalInstructions}`;
-              
-              console.log("Combined document context and web search results");
-            } else {
-              // Just web search, no document context
-              finalUserPrompt = `Context from web search (top 3 results):\n${webResults}\n\nUser query: ${prompt}`;
-            }
+          resolvedImageAttachments.forEach(({ url }) => {
+            userContentParts.push({
+              type: 'image_url',
+              image_url: { url, detail: 'high' }
+            });
+          });
+
+          if (userContentParts.length === 0) {
+            userContentParts.push({ type: 'text', text: ' ' });
           }
+
+          const userMessageContent = userContentParts.length === 1 && userContentParts[0].type === 'text'
+            ? userContentParts[0].text
+            : userContentParts;
 
           // Prepare chat messages
           const formattedMessages = [
@@ -128,13 +147,29 @@ export async function POST(req: NextRequest) {
             // Add current user message with context (if any)
             { 
               role: 'user', 
-              content: finalUserPrompt
+              content: userMessageContent
             }
           ];
 
           console.log('Final chat messages:');
           formattedMessages.slice(0, Math.min(3, formattedMessages.length)).forEach((msg, i) => {
-            console.log(`[${i}] ${msg.role}: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
+            let preview = '';
+            if (typeof msg.content === 'string') {
+              preview = `${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`;
+            } else if (Array.isArray(msg.content)) {
+              const partsPreview = msg.content.map((part: { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string; detail?: string } }) => {
+                if (part.type === 'text') {
+                  const textValue = part.text ?? '';
+                  return textValue.substring(0, 30);
+                }
+                if (part.type === 'image_url') {
+                  return '[image]';
+                }
+                return '[content]';
+              }).join(' | ');
+              preview = partsPreview.substring(0, 50);
+            }
+            console.log(`[${i}] ${msg.role}: ${preview}`);
           });
           
           // Log the total length of the prompt to help diagnose truncation issues

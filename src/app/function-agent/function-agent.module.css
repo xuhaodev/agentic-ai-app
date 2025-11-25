@@ -1,4 +1,0 @@
-.chatContainer {
-  height: var(--chat-height, 450px);
-  transition: height 0.3s ease;
-}

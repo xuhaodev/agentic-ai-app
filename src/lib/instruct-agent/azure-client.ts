@@ -12,12 +12,18 @@ import OpenAI from 'openai';
 // }
 
 export const createChatClient = (endpoint: string, apiKey: string) => {
-  console.log('Creating chat client with endpoint:', endpoint);
-  
+  const resolvedEndpoint = endpoint || 'https://models.github.ai/inference';
+
+  if (!apiKey) {
+    throw new Error('Missing GitHub token. Please set the GITHUB_TOKEN environment variable.');
+  }
+
+  console.log('Creating chat client with endpoint:', resolvedEndpoint);
+
   try {
-    return new OpenAI({ 
-      baseURL: endpoint,
-      apiKey: apiKey,
+    return new OpenAI({
+      baseURL: resolvedEndpoint,
+      apiKey,
       dangerouslyAllowBrowser: false // 确保不在浏览器中使用API密钥
     });
   } catch (error) {

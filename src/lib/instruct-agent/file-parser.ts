@@ -57,8 +57,8 @@ async function readTextFile(file: File): Promise<string> {
  */
 async function extractTextFromPDF(file: File): Promise<string> {
   try {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/legacy/build/pdf.worker.min.js`;
     
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -79,7 +79,8 @@ async function extractTextFromPDF(file: File): Promise<string> {
     return extractedText;
   } catch (error) {
     console.error('Error extracting text from PDF:', error);
-    return `Failed to extract text from PDF "${file.name}". Error: ${error instanceof Error ? error.message : 'Unknown error'}. Please try a different file format or extract the text manually.`;
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return `Failed to extract text from PDF "${file.name}". Error: ${errorMessage}. Please try a different file format or extract the text manually.`;
   }
 }
 
@@ -90,5 +91,7 @@ async function extractTextFromPDF(file: File): Promise<string> {
  */
 async function extractTextFromDOCX(file: File): Promise<string> {
   // This is a placeholder for actual DOCX extraction
-  return `[DOCX Content from ${file.name}]\n\nThis is a simplified text extraction. In a production environment, you would integrate a DOCX parsing library.`;
+  return `[DOCX Content from ${file.name}]
+
+This is a simplified text extraction. In a production environment, you would integrate a DOCX parsing library.`;
 }

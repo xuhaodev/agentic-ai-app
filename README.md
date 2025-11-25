@@ -7,12 +7,7 @@
 
 ## Project Overview
 
-This project represents a new approach to software development - "Vibe Coding" - where the human author chats with AI agents to complete the entire development process collaboratively. The result is a multi-agent AI application with specialized components:
-
-- **Function Agent**: Executes Azure price queries and web searches through function calling capabilities
-- **Instruct Agent**: Processes documents and follows custom system prompts for specific tasks
-- **Workflow Agent**: Coordinates multi-step AI processes through a chain of specialized agents
-- **MCP Agent**: Model Context Protocol implementation for enhanced agent interactions
+This project represents a new approach to software development - "Vibe Coding" - where the human author chats with AI agents to complete the entire development process collaboratively. The result is a focused **Instruct Agent** experience that processes documents, follows custom system prompts, and delivers versatile chat assistance.
 
 ## Development Philosophy
 
@@ -26,15 +21,12 @@ Vibe Coding represents a new paradigm in software development:
 
 ### Core Components
 
-- **Function Agent**: `/app/function-agent/` - Agent with tool-calling capabilities for Azure pricing and web search
-- **Instruct Agent**: `/app/instruct-agent/` - Agent that follows specialized system prompts with document processing
-- **Workflow Agent**: `/app/workflow-agent/` - Agent that coordinates multi-step processes through multiple agents
-- **MCP Agent**: `/app/mcp-agent/` - Implementation of the Model Context Protocol
+- **Instruct Agent**: `/app/instruct-agent/` - Document-aware assistant with customizable system prompts and streaming responses
 
 ### Technology Stack
 
-- **Framework**: Next.js with React 19
-- **AI Integration**: CopilotKit v1.6.0
+- **Framework**: Next.js with React 18
+- **AI Integration**: OpenAI SDK with Azure-compatible endpoints
 - **Styling**: Tailwind CSS
 - **Deployment**: Azure Static Web Apps
 

@@ -20,12 +20,7 @@ const eslintConfig = [
   },
   {
     files: [
-      "src/components/mcp-agent/CopilotActionHandler.tsx",
-      "src/components/mcp-agent/ExampleConfigs.tsx",
-      "src/components/mcp-agent/ToolCallRenderer.tsx",
-      "src/app/function-agent/page.tsx",
-      "src/app/instruct-agent/page.tsx",
-      "src/types/layout.tsx"
+      "src/app/instruct-agent/page.tsx"
     ],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",

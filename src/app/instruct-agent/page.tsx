@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { ChatMessage, ChatRole } from '@/lib/types';
-import { tools, models } from '@/lib/instruct-agent/tools-config';
+import { models } from '@/lib/instruct-agent/models';
+import type { ToolDefinition } from '@/lib/instruct-agent/tools-service';
 import { extractTextFromFile } from '@/lib/instruct-agent/file-parser';
 import { useSidebar } from '@/components/SidebarContext';
 
@@ -30,23 +32,39 @@ interface UploadedDocument {
   error?: string;
 }
 
+interface UploadedImage {
+  file: File;
+  dataUrl: string;
+  base64: string;
+  mimeType: string;
+  isProcessing: boolean;
+  error?: string;
+}
+
 export default function InstructAgentPage() {
   const { isExpanded } = useSidebar();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedTool, setSelectedTool] = useState(tools[0]);
+  const [tools, setTools] = useState<ToolDefinition[]>([]);
+  const [selectedTool, setSelectedTool] = useState<ToolDefinition | null>(null);
   const [selectedModel, setSelectedModel] = useState(models[0]);
-  const [systemPrompt, setSystemPrompt] = useState(tools[0].systemPrompt);
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [isPromptLoading, setIsPromptLoading] = useState(false);
+  const [promptError, setPromptError] = useState<string | null>(null);
+  const [isLoadingTools, setIsLoadingTools] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [documentContext, setDocumentContext] = useState<UploadedDocument[]>([]);
+  const [imageAttachments, setImageAttachments] = useState<UploadedImage[]>([]);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [componentHeight, setComponentHeight] = useState('calc(100vh - 220px)');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const richTextInputRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const selectedToolRef = useRef<string | null>(null);
 
   // Calculate and update component height
   useEffect(() => {
@@ -66,9 +84,54 @@ export default function InstructAgentPage() {
   }, [error]);
 
   useEffect(() => {
-    const tool = tools.find(t => t.id === selectedTool.id);
-    if (tool) setSystemPrompt(tool.systemPrompt);
+    selectedToolRef.current = selectedTool ? selectedTool.id : null;
   }, [selectedTool]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadTools = async () => {
+      setPromptError(null);
+      setIsLoadingTools(true);
+      try {
+        const response = await fetch('/api/tools', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Failed to load tools: ${response.status}`);
+        }
+        const data = await response.json();
+        const fetched: ToolDefinition[] = Array.isArray(data?.tools) ? data.tools : [];
+
+        if (!cancelled) {
+          setTools(fetched);
+          if (fetched.length > 0) {
+            setSelectedTool(fetched[0]);
+          } else {
+            setSelectedTool(null);
+            setSystemPrompt('');
+            setPromptError('未在 GitHub Gist 中找到任何工具。');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load tools', err);
+        if (!cancelled) {
+          setTools([]);
+          setSelectedTool(null);
+          setSystemPrompt('');
+          setPromptError('无法从 GitHub Gist 加载工具列表。');
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingTools(false);
+        }
+      }
+    };
+
+    loadTools();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -81,97 +144,216 @@ export default function InstructAgentPage() {
     }
   };
 
+  const readFileAsDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleEditorInput = (event: React.FormEvent<HTMLDivElement>) => {
+    const textContent = event.currentTarget.innerText.replace(/\u00a0/g, ' ');
+    setInput(textContent);
+  };
+
+  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      const textContent = event.currentTarget.innerText.replace(/\u00a0/g, ' ');
+      const hasContext = documentContext.some(doc => doc.content && !doc.error) ||
+        imageAttachments.some(img => img.base64 && !img.error);
+
+      if (isLoading || (textContent.trim() === '' && !hasContext)) {
+        event.preventDefault();
+        return;
+      }
+
+      event.preventDefault();
+      formRef.current?.requestSubmit();
+    }
+  };
+
+  const loadSystemPromptForTool = useCallback(async (tool: ToolDefinition | null, options?: { refresh?: boolean }) => {
+    if (!tool) return;
+    const isCurrent = selectedToolRef.current === tool.id;
+    if (isCurrent) {
+      setIsPromptLoading(true);
+      setPromptError(null);
+    }
+
+    try {
+      let promptText: string;
+      if (tool.systemPromptUrl) {
+        const query = options?.refresh ? '?refresh=1' : '';
+        const response = await fetch(`/api/system-prompts/${tool.id}${query}`, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Failed to fetch prompt for ${tool.id}`);
+        }
+        const data = await response.json();
+        promptText = (data?.prompt ?? '').trim();
+      } else {
+        promptText = tool.fallbackSystemPrompt ?? '';
+      }
+
+      if (selectedToolRef.current === tool.id) {
+        setSystemPrompt(promptText);
+      }
+    } catch (err) {
+      console.error('Unable to load system prompt', err);
+      const fallbackPrompt = tool.fallbackSystemPrompt ?? '';
+      if (selectedToolRef.current === tool.id) {
+        setSystemPrompt(fallbackPrompt);
+        setPromptError('未能从 GitHub 加载最新提示，已回退至本地内容。');
+      }
+    } finally {
+      if (selectedToolRef.current === tool.id) {
+        setIsPromptLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedTool) {
+      setSystemPrompt('');
+      return;
+    }
+    loadSystemPromptForTool(selectedTool);
+  }, [selectedTool, loadSystemPromptForTool]);
+
   const handleToolChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const tool = tools.find(t => t.id === e.target.value);
-    if (tool) setSelectedTool(tool);
+    const tool = tools.find(t => t.id === e.target.value) ?? null;
+    setPromptError(null);
+    setSelectedTool(tool);
   };
 
   const resetPrompt = () => {
-    const tool = tools.find(t => t.id === selectedTool.id);
-    if (tool) setSystemPrompt(tool.systemPrompt);
+    if (selectedTool) {
+      loadSystemPromptForTool(selectedTool, { refresh: true });
+    }
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    
+
     setIsProcessingFile(true);
     setError(null);
-    
-    // Process all selected files
+
     const filesArray = Array.from(files);
-    let hasAddedSystemMessage = false;
-    
+    let loadedDocuments = 0;
+    let loadedImages = 0;
+
     for (const file of filesArray) {
       try {
-        // Add a temporary processing document
+        if (file.type.startsWith('image/')) {
+          const tempImage: UploadedImage = {
+            file,
+            dataUrl: '',
+            base64: '',
+            mimeType: file.type || 'image/jpeg',
+            isProcessing: true
+          };
+
+          setImageAttachments(prev => [...prev, tempImage]);
+
+          const dataUrl = await readFileAsDataURL(file);
+          const [meta = '', base64Part = ''] = dataUrl.split(',');
+          const mimeMatch = meta.match(/data:(.*);base64/);
+          const mimeType = mimeMatch?.[1] ?? file.type ?? 'image/jpeg';
+
+          setImageAttachments(prev =>
+            prev.map(img =>
+              img.file === file
+                ? { ...img, isProcessing: false, dataUrl, base64: base64Part, mimeType }
+                : img
+            )
+          );
+
+          loadedImages += 1;
+          console.log(`Loaded image attachment: ${file.name} (${mimeType})`);
+          continue;
+        }
+
         const tempDoc: UploadedDocument = {
           file,
-          content: "",
+          content: '',
           isProcessing: true
         };
-        
+
         setDocumentContext(prev => [...prev, tempDoc]);
-        
-        // Extract text from the file
+
         const text = await extractTextFromFile(file);
-        
-        // Check if the text indicates an extraction error
-        const isExtractionError = text.includes("Failed to extract text from PDF") || 
-                                 text.includes("Unable to fully extract content");
-        
+
+        const isExtractionError = text.includes('Failed to extract text from PDF') ||
+          text.includes('Unable to fully extract content');
+
         if (isExtractionError) {
-          // Update with error status
-          setDocumentContext(prev => 
-            prev.map(doc => 
-              doc.file.name === file.name && doc.isProcessing 
-                ? { ...doc, isProcessing: false, error: text, content: "" }
+          setDocumentContext(prev =>
+            prev.map(doc =>
+              doc.file === file && doc.isProcessing
+                ? { ...doc, isProcessing: false, error: text, content: '' }
                 : doc
             )
           );
-          
-          // Add error message to chat
+
           const errorMsg: ChatMessage = {
-            role: "assistant",
+            role: 'assistant',
             content: `It seems I cannot extract text from the file "${file.name}" because it's either scanned or in an unsupported format. Please try a different file or type your question directly.`
           };
           setMessages(prev => [...prev, errorMsg]);
         } else {
-          // Successfully extracted content - update document context
-          setDocumentContext(prev => 
-            prev.map(doc => 
-              doc.file.name === file.name && doc.isProcessing 
+          setDocumentContext(prev =>
+            prev.map(doc =>
+              doc.file === file && doc.isProcessing
                 ? { ...doc, isProcessing: false, content: text }
                 : doc
             )
           );
-          
-          // Add system message only once for all files
-          if (!hasAddedSystemMessage) {
-            const contextMsg: ChatMessage = {
-              role: "assistant",
-              content: `I've loaded ${filesArray.length} document(s) as context. You can now ask questions about the content.`
-            };
-            setMessages(prev => [...prev, contextMsg]);
-            hasAddedSystemMessage = true;
-          }
+          loadedDocuments += 1;
+          console.log(`Loaded document context: ${file.name} (${Math.round(text.length / 1024)}KB approx)`);
         }
       } catch (err) {
         console.error('Error processing file:', err);
-        
-        // Update document with error
-        setDocumentContext(prev => 
-          prev.map(doc => 
-            doc.file.name === file.name && doc.isProcessing 
-              ? { ...doc, isProcessing: false, error: "Failed to process file" }
-              : doc
-          )
-        );
-        
+
+        if (file.type.startsWith('image/')) {
+          setImageAttachments(prev =>
+            prev.map(img =>
+              img.file === file && img.isProcessing
+                ? { ...img, isProcessing: false, error: 'Failed to process image attachment' }
+                : img
+            )
+          );
+        } else {
+          setDocumentContext(prev =>
+            prev.map(doc =>
+              doc.file === file && doc.isProcessing
+                ? { ...doc, isProcessing: false, error: 'Failed to process file' }
+                : doc
+            )
+          );
+        }
+
         setError(`Failed to process file: ${file.name}`);
       }
     }
-    
+
+    if (loadedDocuments > 0 || loadedImages > 0) {
+      const parts = [];
+      if (loadedDocuments > 0) {
+        parts.push(`${loadedDocuments} document${loadedDocuments > 1 ? 's' : ''}`);
+      }
+      if (loadedImages > 0) {
+        parts.push(`${loadedImages} image${loadedImages > 1 ? 's' : ''}`);
+      }
+
+      const contextMsg: ChatMessage = {
+        role: 'assistant',
+        content: `I've loaded ${parts.join(' and ')} as context. You can now ask questions about the content.`
+      };
+      setMessages(prev => [...prev, contextMsg]);
+    }
+
     setIsProcessingFile(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -180,9 +362,20 @@ export default function InstructAgentPage() {
     setDocumentContext(prev => prev.filter(doc => doc !== documentToRemove));
   };
 
+  const removeImage = (imageToRemove: UploadedImage) => {
+    setImageAttachments(prev => prev.filter(img => img !== imageToRemove));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && documentContext.length === 0) || isLoading) return;
+    const hasValidDocuments = documentContext.some(doc => doc.content && !doc.error);
+    const hasValidImages = imageAttachments.some(img => img.base64 && !img.error);
+
+    if ((input.trim() === '' && !hasValidDocuments && !hasValidImages) || isLoading) return;
+    if (!selectedTool) {
+      setError('请先选择一个工具。');
+      return;
+    }
     setError(null);
 
     // Show only the user's input in the UI
@@ -213,7 +406,18 @@ export default function InstructAgentPage() {
       });
     }
 
+    const validImages = imageAttachments.filter(img => img.base64 && !img.error);
+    if (validImages.length > 0) {
+      console.log(`Including ${validImages.length} image attachment(s) as context`);
+      validImages.forEach((img, idx) => {
+        console.log(`Image ${idx + 1}: ${img.file.name} (${img.mimeType})`);
+      });
+    }
+
     setInput('');
+    if (richTextInputRef.current) {
+      richTextInputRef.current.innerHTML = '';
+    }
     setIsLoading(true);
 
     try {
@@ -225,6 +429,12 @@ export default function InstructAgentPage() {
       // 系统消息将由后端根据选定的工具添加
       const messageHistory = messages.filter(m => m.role !== 'system');
 
+      const imagePayload = validImages.map(img => ({
+        name: img.file.name,
+        mimeType: img.mimeType,
+        base64: img.base64
+      }));
+
       const response = await fetch('/api/instruct-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -234,7 +444,7 @@ export default function InstructAgentPage() {
           prompt: combinedInput,
           tool: selectedTool.id,
           model: selectedModel.id,
-          webSearchEnabled
+          imageAttachments: imagePayload
         })
       });
 
@@ -391,13 +601,25 @@ export default function InstructAgentPage() {
               );
             }
           }}
-          remarkPlugins={[remarkGfm]}
+          remarkPlugins={[remarkGfm, remarkBreaks]}
         >
           {safeContent || ' '}
         </ReactMarkdown>
       </div>
     );
   };
+
+  const hasValidDocumentsForUi = documentContext.some(doc => doc.content && !doc.error);
+  const hasValidImagesForUi = imageAttachments.some(img => img.base64 && !img.error);
+  const hasContextItems = documentContext.length > 0 || imageAttachments.length > 0;
+
+  const inputPlaceholder = hasValidDocumentsForUi || hasValidImagesForUi
+    ? 'Ask questions about the uploaded context...'
+    : 'Type your message here...';
+
+  const isSubmitDisabled = isLoading || (input.trim() === '' && !hasValidDocumentsForUi && !hasValidImagesForUi);
+
+  const isInputEmpty = input.trim() === '';
 
   return (
     <main className={`min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-4 px-4 ${
@@ -414,17 +636,22 @@ export default function InstructAgentPage() {
           <div className="flex gap-4 relative z-10">
             <div className="relative border-2 border-gray-200 hover:border-blue-400 transition-colors rounded-lg shadow-sm">
               <select
-                value={selectedTool.id}
+                value={selectedTool?.id ?? ''}
                 onChange={handleToolChange}
-                className="appearance-none bg-white px-4 py-2 pr-8 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg"
+                disabled={isLoadingTools || tools.length === 0}
+                className="appearance-none bg-white px-4 py-2 pr-8 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg disabled:bg-gray-100 disabled:text-gray-400"
                 aria-label="Select tool"
                 title="Select tool"
               >
-                {tools.map(tool => (
-                  <option key={tool.id} value={tool.id}>
-                    {tool.name}
-                  </option>
-                ))}
+                {tools.length === 0 ? (
+                  <option value="">{isLoadingTools ? '加载工具中...' : '无可用工具'}</option>
+                ) : (
+                  tools.map(tool => (
+                    <option key={tool.id} value={tool.id}>
+                      {tool.name}
+                    </option>
+                  ))
+                )}
               </select>
               <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
                 <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
@@ -471,16 +698,27 @@ export default function InstructAgentPage() {
           <div className="bg-white rounded-lg p-4 border-2 border-gray-200 shadow-lg flex flex-col w-1/3 relative overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-purple-600/5 z-0"></div>
             <div className="flex items-center justify-between mb-3 relative z-10">
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="material-icons-outlined text-blue-600">edit_note</span>
                 <p className="text-sm font-medium text-gray-700">System Prompt:</p>
+                {isPromptLoading && (
+                  <span className="text-xs text-blue-600">加载中...</span>
+                )}
+                {!isPromptLoading && promptError && (
+                  <span className="text-xs text-red-500 sm:hidden">{promptError}</span>
+                )}
               </div>
-              <button 
-                onClick={resetPrompt}
-                className="text-xs text-blue-600 hover:text-blue-700 transition-colors hover:bg-blue-50 px-2 py-1 rounded"
-              >
-                Reset to Default
-              </button>
+              <div className="flex items-center gap-3">
+                {promptError && (
+                  <span className="hidden text-xs text-red-500 sm:inline">{promptError}</span>
+                )}
+                <button
+                  onClick={resetPrompt}
+                  className="text-xs text-blue-600 hover:text-blue-700 transition-colors hover:bg-blue-50 px-2 py-1 rounded"
+                >
+                  从 GitHub 重新加载
+                </button>
+              </div>
             </div>
             <div className="flex-1 relative z-10 overflow-auto">
               <textarea
@@ -552,12 +790,15 @@ export default function InstructAgentPage() {
             </div>
 
             <div className="border-t border-gray-200 mt-auto relative z-10">
-              {documentContext.length > 0 && (
+              {hasContextItems && (
                 <div className="p-3 bg-blue-50 border-b border-blue-200">
                   <div className="flex justify-between items-center mb-1">
-                    <h3 className="text-sm font-medium text-blue-700">Document Context</h3>
+                    <h3 className="text-sm font-medium text-blue-700">Context Attachments</h3>
                     <button 
-                      onClick={() => setDocumentContext([])}
+                      onClick={() => {
+                        setDocumentContext([]);
+                        setImageAttachments([]);
+                      }}
                       className="text-xs text-blue-600 hover:text-blue-800 transition-colors hover:bg-blue-100 px-2 py-1 rounded"
                     >
                       Clear All
@@ -566,7 +807,7 @@ export default function InstructAgentPage() {
                   <div className="flex flex-wrap gap-2 max-w-full overflow-x-auto pb-1">
                     {documentContext.map((doc, idx) => (
                       <div 
-                        key={idx} 
+                        key={`doc-${idx}`} 
                         className={`flex items-center px-3 py-1 rounded-lg text-sm border ${
                           doc.error 
                             ? 'bg-red-50 text-red-700 border-red-200' 
@@ -592,39 +833,53 @@ export default function InstructAgentPage() {
                         )}
                       </div>
                     ))}
+                    {imageAttachments.map((img, idx) => (
+                      <div 
+                        key={`image-${idx}`} 
+                        className={`flex items-center px-3 py-1 rounded-lg text-sm border ${
+                          img.error 
+                            ? 'bg-red-50 text-red-700 border-red-200' 
+                            : 'bg-purple-50 text-purple-700 border-purple-200'
+                        }`}
+                      >
+                        <span className="material-icons-outlined mr-2 text-sm">
+                          {img.error ? 'error_outline' : 'image'}
+                        </span>
+                        <span className="truncate max-w-[150px]" title={img.file.name}>
+                          {img.file.name}
+                        </span>
+                        {img.isProcessing ? (
+                          <div className="ml-2 h-4 w-4 border-b-2 border-blue-600 rounded-full animate-spin"></div>
+                        ) : (
+                          <button 
+                            onClick={() => removeImage(img)}
+                            className="ml-2 text-current hover:text-purple-900"
+                            title="Remove image"
+                          >
+                            <span className="material-icons-outlined text-sm">close</span>
+                          </button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
               <div className="p-3 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-                    className={`flex items-center px-3 py-1 rounded-lg text-sm font-medium transition-colors duration-200 border ${webSearchEnabled ? 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-300' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <span className="material-icons-outlined mr-2 text-sm">
-                      {webSearchEnabled ? 'search_off' : 'search'}
-                    </span>
-                    {webSearchEnabled ? 'Disable Web Search' : 'Enable Web Search'}
-                  </button>
-
-                  {isProcessingFile && (
-                    <div className="flex items-center text-sm text-gray-600">
-                      <div className="animate-spin h-4 w-4 border-b-2 border-blue-600 rounded-full mr-2"></div>
-                      <span>Processing files...</span>
-                    </div>
-                  )}
-                </div>
+                {isProcessingFile && (
+                  <div className="flex items-center text-sm text-gray-600">
+                    <div className="animate-spin h-4 w-4 border-b-2 border-blue-600 rounded-full mr-2"></div>
+                    <span>Processing files...</span>
+                  </div>
+                )}
               </div>
               <div className="p-3 bg-gradient-to-r from-gray-50 to-gray-100">
-                <form onSubmit={handleSubmit} className="flex gap-2">
+                <form ref={formRef} onSubmit={handleSubmit} className="flex gap-2">
                   <input 
                     type="file"
                     ref={fileInputRef}
                     onChange={handleFileSelect}
-                    accept=".pdf,.txt,.docx,.md"
+                    accept=".pdf,.txt,.docx,.md,image/*"
                     className="hidden"
                     disabled={isLoading || isProcessingFile}
                     multiple
@@ -641,19 +896,29 @@ export default function InstructAgentPage() {
                     <span className="material-icons-outlined">attach_file</span>
                   </button>
                   
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder={documentContext.length > 0 
-                      ? "Ask questions about the uploaded documents..." 
-                      : "Type your message here..."}
-                    className="flex-1 p-2 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-inner"
-                    disabled={isLoading}
-                  />
+                  <div className="relative flex-1">
+                    <div
+                      ref={richTextInputRef}
+                      className="rich-text-input flex-1 min-h-[2.75rem] max-h-[4.5rem] w-full overflow-y-auto p-2 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-inner whitespace-pre-wrap break-words"
+                      contentEditable
+                      onInput={handleEditorInput}
+                      onKeyDown={handleEditorKeyDown}
+                      role="textbox"
+                      aria-multiline="true"
+                      aria-label="Message input"
+                      tabIndex={0}
+                      data-placeholder={inputPlaceholder}
+                      suppressContentEditableWarning
+                    />
+                    {isInputEmpty && (
+                      <div className="pointer-events-none absolute left-3 top-2 text-gray-400 select-none">
+                        {inputPlaceholder}
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="submit"
-                    disabled={isLoading || (input.trim() === '' && documentContext.length === 0)}
+                    disabled={isSubmitDisabled}
                     className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 border-none"
                   >
                     Send
