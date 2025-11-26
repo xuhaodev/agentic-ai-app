@@ -1,41 +1,54 @@
 # Agentic AI Application
 
-**This is Vibe Coding Project** - A modern AI agent platform built through collaborative coding between [@xuhaoruins](https://github.com/xuhaoruins) and GitHub Copilot AI agents, showcasing the future of human-AI development partnerships and methodology.
+**This is Vibe Coding Project** — a modern AI agent platform co-created by [@xuhaoruins](https://github.com/xuhaoruins) and GitHub Copilot AI agents. The codebase showcases what collaborative "Vibe Coding" looks like in production.
 
 **Live Demo**: [https://agent.haxu.dev/](https://agent.haxu.dev/)
 
+---
 
-## Project Overview
+## 📖 Project Overview
 
-This project represents a new approach to software development - "Vibe Coding" - where the human author chats with AI agents to complete the entire development process collaboratively. The result is a focused **Instruct Agent** experience that processes documents, follows custom system prompts, and delivers versatile chat assistance.
+This repository contains the production-ready **Instruct Agent** experience. Users can upload documents, craft custom system prompts, and chat with an AI assistant that streams responses in real time. The latest iteration adds a rich-text composer, inline line breaks, and direct image attachments that are forwarded to the model as `image_url` content.
 
-## Development Philosophy
+### ✨ Key Features
+- **Document-aware assistant** with structured context injection and streaming replies
+- **Rich text input** with auto-growing editor (up to three lines) and keyboard shortcuts
+- **Image attachments**: upload images alongside your prompt; files are encoded to Base64 and included in the API call
+- **Flexible prompt management** powered by GitHub Gists (system prompts can be refreshed on demand)
+- **File parsing pipeline** for PDF, TXT, DOCX, and Markdown uploads
+- **Azure-friendly deployment** with Docker workflow targeting Azure Container Registry
 
-Vibe Coding represents a new paradigm in software development:
+### 🧠 Development Philosophy
+Vibe Coding embraces:
+1. **Human-AI Collaboration** — every feature begins as a conversation
+2. **Iterative Delivery** — specs evolve dialog by dialog, with working builds on each pass
+3. **Knowledge Transfer** — complex ideas are distilled into executable changes by the AI agents
 
-1. **Human-AI Collaboration**: The entire codebase was developed through natural language conversations between the author and AI agents
-2. **Iterative Development**: Features were built incrementally through conversational development cycles
-3. **Knowledge Transfer**: Complex concepts were explained and implemented by the AI based on high-level requirements
+---
 
-## Project Structure
+## 🗂️ Project Structure & Stack
 
-### Core Components
+- **Framework**: Next.js 15 (App Router) with React 18
+- **Language**: TypeScript (strict mode)
+- **UI**: Tailwind CSS and custom gradients
+- **AI Integration**: OpenAI SDK with Azure-compatible endpoints (GitHub Models by default)
+- **File Utilities**: `pdfjs-dist` for PDF extraction plus custom parsers for text/DOCX
+- **Build Tooling**: ESLint 9, TypeScript 5.8, Tailwind 3
 
-- **Instruct Agent**: `/app/instruct-agent/` - Document-aware assistant with customizable system prompts and streaming responses
+Key directories:
+- `src/app/instruct-agent/` — UI, streaming chat experience, file uploader
+- `src/app/api/instruct-agent/` — Edge runtime route that calls the model and handles image payloads
+- `src/lib/instruct-agent/` — client utilities (Azure client, prompt loader, file parser, models registry)
 
-### Technology Stack
+---
 
-- **Framework**: Next.js with React 18
-- **AI Integration**: OpenAI SDK with Azure-compatible endpoints
-- **Styling**: Tailwind CSS
-- **Deployment**: Azure Static Web Apps
+## 🚀 Quick Start
 
-## Getting Started
+### Prerequisites
+- Node.js 20+ (aligns with Next.js 15 requirements)
+- npm, pnpm, or yarn
 
-### Installation
-
-Install dependencies using your preferred package manager:
-
+### Install Dependencies
 ```bash
 pnpm install
 # or
@@ -44,10 +57,7 @@ npm install
 yarn install
 ```
 
-### Development
-
-Run the development server:
-
+### Run in Development
 ```bash
 pnpm dev
 # or
@@ -55,71 +65,93 @@ npm run dev
 # or
 yarn dev
 ```
+Visit [http://localhost:3000](http://localhost:3000) to interact with the agent.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
-
-## Deployment
-
-The application is deployed on Azure Static Web Apps and accessible at [https://agent.haxu.dev/](https://agent.haxu.dev/).
-
-### Recommended Deployment Options
-
-We recommend deploying this application using one of these Azure services:
-
-1. **Azure Web App**:
-
-   - Ideal for hosting the Next.js application directly
-   - Supports continuous deployment from GitHub
-   - Offers easy scaling options
-2. **Azure Container App**:
-
-   - Good choice for containerized deployment
-   - Better for microservices architecture
-   - Provides flexibility with resource allocation
-
-### Required Environment Variables
-
-To deploy your own version, you'll need to configure the following environment variables:
-
+### Lint & Type-Check
+```bash
+npm run lint
 ```
-AZURE_OPENAI_ENDPOINT=https://models.inference.ai.azure.com # use GitHub Models as sample
-OPENAI_API_KEY=ghp_xxxx  #use your GitHub key
+This command runs ESLint with the Next.js configuration and is part of the local quality gate.
 
-SECOND_OPENAI_API_KEY=   # use your Azure OpenAI key
-SECOND_AZURE_OPENAI_ENDPOINT=https://xxxxx.openai.azure.com/ # use your Azure OpenAI endpoint
+### Production Build
+```bash
+npm run build
+```
+The build step mirrors our CI pipeline and validates TypeScript types before emitting optimized output under `.next/`.
+
+---
+
+## 🔐 Environment Variables
+
+Create a `.env.local` (or configure secrets in your hosting platform) with the following keys as needed:
+
+```bash
+AZURE_OPENAI_ENDPOINT=https://models.inference.ai.azure.com
+OPENAI_API_KEY=ghp_xxxx            # GitHub Models sample key
+
+SECOND_OPENAI_API_KEY=             # Azure OpenAI key (optional fallback)
+SECOND_AZURE_OPENAI_ENDPOINT=https://xxxxx.openai.azure.com/
 OPENAI_API_VERSION=2024-10-21
-TAVILY_API_KEY=tvly-xxx # use your Tavily search api key
 
-LANGSMITH_API_KEY=lsv2_xxxx # use your Langsmith key
-AGENT_DEPLOYMENT_URL=https://xxxx.azurewebsites.net # refer to my MCP-Server project
-
+TAVILY_API_KEY=tvly_xxx            # Tavily search API key (optional)
+LANGSMITH_API_KEY=lsv2_xxx         # LangSmith tracing key (optional)
+AGENT_DEPLOYMENT_URL=https://xxxx.azurewebsites.net
 ```
 
-### Deployment Steps
+> 💡 The application can run with only `OPENAI_API_KEY` + `AZURE_OPENAI_ENDPOINT` configured when using GitHub Models. Other keys unlock additional functionality like Tavily search or LangSmith tracing.
 
-1. Fork this repository
-2. Create your chosen Azure resource (Web App, Container App, or Static Web App)
-3. Connect it to your forked repository for CI/CD deployment
-4. Configure the environment variables in the Azure service configuration
-   - For Azure Web App: Add in Configuration > Application Settings
-   - For Azure Container App: Add in Configuration > Environment Variables
-   - For Azure Static Web Apps: Add in Configuration > Environment Variables
-5. Deploy and enjoy!
+---
 
-If deploying with Docker (recommended for Azure Container App):
+## 📦 Deployment & CI
 
+### Docker
 ```bash
 # Build the Docker image
 docker build -t agentic-ai-app .
 
-# Run locally to test (optional)
+# Run locally
 docker run -p 3000:3000 --env-file .env agentic-ai-app
 
-# Push to a container registry (Azure Container Registry recommended)
-docker tag agentic-ai-app your-registry.azurecr.io/agentic-ai-app
-docker push your-registry.azurecr.io/agentic-ai-app
+# Push to Azure Container Registry
+docker tag agentic-ai-app haxureg.azurecr.io/agentic-ai-app
+docker push haxureg.azurecr.io/agentic-ai-app
 ```
 
-## Acknowledgements
+### GitHub Actions
+The workflow at `.github/workflows/action-to-acr.yml` builds and pushes the image to Azure Container Registry whenever commits land on the **`master`** branch (or an open PR targets `master`). Required secrets: `ACR_USERNAME` and `ACR_PASSWORD`.
 
-This project demonstrates the potential of human-AI collaborative development. The entire development process was completed through conversation between the author and AI agents - showing how "Vibe Coding" can transform software development.
+### Recommended Azure Targets
+1. **Azure Web App for Containers** — straightforward deployment of the Docker image
+2. **Azure Container Apps** — flexible scaling and microservices support
+3. **Azure Static Web Apps** — use if shipping a statically pre-rendered variant
+
+---
+
+## 🗃️ Branching Model
+
+- **master** — current default branch
+- **backup** — snapshot of the legacy master branch before the latest iteration
+- **Feature branches** should branch off `master` and merge back via pull requests
+
+Ensure your local clone targets the correct branch:
+```bash
+git checkout master
+```
+
+---
+
+## 🤝 Contributing
+1. Discuss planned changes via GitHub Issues or pull requests
+2. Work in a dedicated feature branch
+3. Run `npm run lint` and `npm run build` before opening a PR
+4. Document testing steps (and any AI prompts used) in your PR description
+
+Because this project highlights AI-assisted development, we encourage capturing the conversational context that led to major updates.
+
+---
+
+## 🙏 Acknowledgements
+
+This project demonstrates how conversational development with AI agents can deliver a production-grade experience. Every commit reflects human guidance plus AI execution — showing how "Vibe Coding" can reshape modern software teams.
+
+Enjoy building with Agentic AI!

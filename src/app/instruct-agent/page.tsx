@@ -720,7 +720,7 @@ export default function InstructAgentPage() {
                 </button>
               </div>
             </div>
-            <div className="flex-1 relative z-10 overflow-auto">
+            <div className="flex-1 relative z-10">
               <textarea
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
