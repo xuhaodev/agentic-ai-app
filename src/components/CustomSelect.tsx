@@ -107,7 +107,6 @@ export default function CustomSelect({
         max-h-[320px] overflow-y-auto
         bg-white backdrop-blur-xl rounded-xl shadow-2xl shadow-slate-200/60
         border border-indigo-100 py-1
-        animate-in fade-in slide-in-from-top-2 duration-200
       "
     >
       {options.map((option, index) => (
