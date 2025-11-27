@@ -5,15 +5,49 @@
 @layer base {
   body {
     @apply antialiased;
+    background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 50%, #f0f9ff 100%);
   }
 }
 
 @layer utilities {
   .bg-gradient-blur {
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
   }
   .border-3 {
     border-width: 3px;
+  }
+  
+  /* 玻璃拟态效果 */
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  
+  /* 科技感发光边框 */
+  .tech-border {
+    position: relative;
+    border: 1px solid rgba(99, 102, 241, 0.2);
+  }
+  
+  .tech-border::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(59, 130, 246, 0.1), rgba(147, 51, 234, 0.3));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  
+  /* 微妙的悬停发光效果 */
+  .hover-glow:hover {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.15), 0 4px 16px rgba(0, 0, 0, 0.08);
   }
 }
 
@@ -22,22 +56,24 @@ html {
   scroll-behavior: smooth;
 }
 
-/* 自定义滚动条 */
+/* 自定义滚动条 - 科技感设计 */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 100%);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
+  background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #666;
+  background: linear-gradient(180deg, #64748b 0%, #475569 100%);
 }
 
 /* 文字选中效果 */
@@ -117,12 +153,15 @@ textarea::-moz-selection {
   color: #1e40af;
 }
 
-/* Make code blocks selectable */
+/* Make code blocks selectable - 科技感代码块 */
 .markdown-content pre {
   user-select: text;
   -webkit-user-select: text;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important;
+  margin: 1rem 0;
 }
 
 /* Make code selectable */
@@ -131,24 +170,59 @@ textarea::-moz-selection {
   -webkit-user-select: text;
 }
 
-/* Enhanced styles for chatbot bubbles */
+/* 内联代码样式 */
+.markdown-content :not(pre) > code {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(59, 130, 246, 0.08));
+  color: #4338ca;
+  padding: 0.2em 0.5em;
+  border-radius: 6px;
+  font-size: 0.9em;
+  font-weight: 500;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+/* Enhanced styles for chatbot bubbles - 高对比度优化 */
 .markdown-content p {
-  color: #1a202c; /* Dark gray for better contrast */
+  color: #0f172a; /* 更深的颜色，确保高对比度 */
+  line-height: 1.7;
 }
 
 .markdown-content strong,
 .markdown-content b {
-  color: #1e40af; /* Highlight important text in blue */
-  font-weight: 600;
+  color: #1e3a8a; /* 深蓝色，在浅色背景上有极好的对比度 */
+  font-weight: 700;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(99, 102, 241, 0.12));
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  border-bottom: 2px solid rgba(59, 130, 246, 0.4);
+}
+
+.markdown-content em,
+.markdown-content i {
+  color: #4338ca;
+  font-style: italic;
+}
+
+.markdown-content a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-decoration-color: rgba(37, 99, 235, 0.4);
+  text-underline-offset: 2px;
+  transition: all 0.2s ease;
+}
+
+.markdown-content a:hover {
+  color: #1d4ed8;
+  text-decoration-color: #1d4ed8;
 }
 
 .markdown-content ul li::before {
-  content: "•";
-  color: #3b82f6;
+  content: "▸";
+  color: #6366f1;
   font-weight: bold;
   display: inline-block; 
-  width: 1em;
-  margin-left: -1em;
+  width: 1.2em;
+  margin-left: -1.2em;
 }
 
 .markdown-content ol {
@@ -156,42 +230,79 @@ textarea::-moz-selection {
   padding-left: 1.5rem;
 }
 
+.markdown-content ol li::marker {
+  color: #6366f1;
+  font-weight: 600;
+}
+
 .markdown-content ul {
   list-style-type: none;
   padding-left: 1.5rem;
 }
 
-/* Enhanced table styling for markdown content */
+.markdown-content li {
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+.markdown-content blockquote {
+  border-left: 4px solid #6366f1;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(59, 130, 246, 0.05));
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+  border-radius: 0 8px 8px 0;
+  color: #334155;
+  font-style: italic;
+}
+
+/* Enhanced table styling for markdown content - 科技感设计 */
 .markdown-content table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
   margin: 1rem 0;
   font-size: 0.875rem;
-  border: 2px solid rgba(0, 0, 0, 0.3); /* Medium-opacity black border */
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
 }
 
 .markdown-content th {
-  background-color: #f1f5f9;
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
   color: #1e293b;
   font-weight: 600;
   text-align: left;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid rgba(99, 102, 241, 0.3);
+}
+
+.markdown-content th:not(:last-child) {
+  border-right: 1px solid rgba(99, 102, 241, 0.15);
 }
 
 .markdown-content td {
-  padding: 0.5rem 0.75rem;
-  border: 1px solid rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.1);
   vertical-align: top;
+  color: #1e293b;
+}
+
+.markdown-content td:not(:last-child) {
+  border-right: 1px solid rgba(99, 102, 241, 0.1);
+}
+
+.markdown-content tr:last-child td {
+  border-bottom: none;
 }
 
 .markdown-content tr:nth-child(even) {
-  background-color: #f8fafc;
+  background-color: rgba(241, 245, 249, 0.7);
 }
 
 .markdown-content tr:hover {
-  background-color: #e0f2fe; /* Light blue highlight on hover */
+  background: linear-gradient(135deg, rgba(224, 231, 255, 0.5) 0%, rgba(199, 210, 254, 0.3) 100%);
 }
 
 /* Add this to your existing globals.css file */
@@ -206,4 +317,64 @@ html {
 
 code, pre, kbd, samp {
   font-family: var(--font-mono);
+}
+
+/* 自定义下拉列表样式 */
+select {
+  background-color: transparent;
+}
+
+select option {
+  background-color: #ffffff;
+  color: #1e293b;
+  padding: 12px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+select option:hover,
+select option:focus {
+  background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+}
+
+select option:checked {
+  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+  color: white;
+  font-weight: 600;
+}
+
+/* Firefox 下拉列表样式 */
+@-moz-document url-prefix() {
+  select option {
+    padding: 8px 12px;
+  }
+}
+
+/* 下拉列表展开状态优化 */
+select:focus {
+  outline: none;
+}
+
+/* 自定义下拉菜单动画 */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: slideIn 0.15s ease-out;
+}
+
+.fade-in {
+  animation-name: fadeIn;
+}
+
+.slide-in-from-top-2 {
+  --tw-enter-translate-y: -0.5rem;
 }

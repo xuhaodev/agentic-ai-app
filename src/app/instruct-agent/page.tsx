@@ -11,6 +11,7 @@ import { models } from '@/lib/instruct-agent/models';
 import type { ToolDefinition } from '@/lib/instruct-agent/tools-service';
 import { extractTextFromFile } from '@/lib/instruct-agent/file-parser';
 import { useSidebar } from '@/components/SidebarContext';
+import CustomSelect from '@/components/CustomSelect';
 
 interface CodeProps {
   node?: any;
@@ -58,30 +59,12 @@ export default function InstructAgentPage() {
   const [documentContext, setDocumentContext] = useState<UploadedDocument[]>([]);
   const [imageAttachments, setImageAttachments] = useState<UploadedImage[]>([]);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
-  const [componentHeight, setComponentHeight] = useState('calc(100vh - 220px)');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const richTextInputRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const selectedToolRef = useRef<string | null>(null);
-
-  // Calculate and update component height
-  useEffect(() => {
-    const updateHeight = () => {
-      const vh = window.innerHeight;
-      const headerHeight = 100; // Header + padding
-      const errorHeight = error ? 80 : 0; // Error message height if present
-      const paddingBottom = 40;
-      
-      const availableHeight = vh - headerHeight - errorHeight - paddingBottom;
-      setComponentHeight(`${availableHeight}px`);
-    };
-    
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
-  }, [error]);
 
   useEffect(() => {
     selectedToolRef.current = selectedTool ? selectedTool.id : null;
@@ -545,25 +528,57 @@ export default function InstructAgentPage() {
     const safeContent = typeof content === 'string' ? content : '';
     
     return (
-      <div className="prose prose-sm max-w-none prose-gray dark:prose-invert font-medium text-gray-900">
+      <div className="prose prose-sm max-w-none prose-slate font-medium text-slate-800">
         <ReactMarkdown
           components={{
             // Properly handle paragraphs
             p: ({ children }) => (
-              <p className="mb-4 last:mb-0">{children}</p>
+              <p className="mb-4 last:mb-0 text-slate-700 leading-relaxed">{children}</p>
             ),
             // Handle headings with high contrast
             h1: ({ children }) => (
-              <h1 className="text-xl font-bold text-gray-900 border-b border-gray-200 pb-1 mb-3">{children}</h1>
+              <h1 className="text-xl font-bold text-slate-900 border-b border-indigo-200/60 pb-2 mb-4">{children}</h1>
             ),
             h2: ({ children }) => (
-              <h2 className="text-lg font-bold text-gray-800 mb-3">{children}</h2>
+              <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+                <span className="w-1 h-5 bg-gradient-to-b from-indigo-500 to-blue-500 rounded-full"></span>
+                {children}
+              </h2>
             ),
             h3: ({ children }) => (
-              <h3 className="text-base font-bold text-gray-800 mb-2">{children}</h3>
+              <h3 className="text-base font-bold text-slate-800 mb-2">{children}</h3>
             ),
             h4: ({ children }) => (
-              <h4 className="text-base font-semibold text-gray-800 mb-2">{children}</h4>
+              <h4 className="text-base font-semibold text-slate-700 mb-2">{children}</h4>
+            ),
+            // Handle strong/bold with high contrast
+            strong: ({ children }) => (
+              <strong className="font-bold text-slate-900 bg-gradient-to-r from-indigo-100/60 to-blue-100/40 px-1 py-0.5 rounded border-b-2 border-indigo-400/50">{children}</strong>
+            ),
+            // Handle emphasis/italic
+            em: ({ children }) => (
+              <em className="text-indigo-700 italic">{children}</em>
+            ),
+            // Handle links
+            a: ({ href, children }) => (
+              <a href={href} className="text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300 underline-offset-2 transition-colors" target="_blank" rel="noopener noreferrer">{children}</a>
+            ),
+            // Handle lists
+            ul: ({ children }) => (
+              <ul className="space-y-1.5 my-3 pl-0">{children}</ul>
+            ),
+            ol: ({ children }) => (
+              <ol className="space-y-1.5 my-3 pl-5 list-decimal marker:text-indigo-500 marker:font-semibold">{children}</ol>
+            ),
+            li: ({ children }) => (
+              <li className="text-slate-700 leading-relaxed flex items-start gap-2">
+                <span className="text-indigo-500 mt-1.5 flex-shrink-0">▸</span>
+                <span>{children}</span>
+              </li>
+            ),
+            // Handle blockquotes
+            blockquote: ({ children }) => (
+              <blockquote className="border-l-4 border-indigo-400 bg-gradient-to-r from-indigo-50/80 to-transparent pl-4 pr-2 py-2 my-3 rounded-r-lg italic text-slate-600">{children}</blockquote>
             ),
             // Handle code blocks with proper formatting
             code: ({ inline, className, children, ...props }: CodeProps) => {
@@ -576,10 +591,11 @@ export default function InstructAgentPage() {
                   : String(children || '');
               
               return !inline && match ? (
-                <div className="relative group">
+                <div className="relative group my-3">
+                  <div className="absolute -top-3 left-3 px-2 py-0.5 bg-slate-700 text-xs text-slate-300 rounded-t-md font-mono">{match[1]}</div>
                   <button
                     onClick={() => copyToClipboard(codeContent)}
-                    className="absolute right-2 top-2 p-1 rounded bg-gray-700 text-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute right-2 top-2 p-1.5 rounded-lg bg-slate-600/80 hover:bg-slate-500 text-slate-200 opacity-0 group-hover:opacity-100 transition-all duration-200"
                     title="Copy code"
                   >
                     <span className="material-icons-outlined text-sm">content_copy</span>
@@ -589,17 +605,34 @@ export default function InstructAgentPage() {
                     style={vscDarkPlus}
                     language={match[1]}
                     PreTag="div"
-                    className="rounded-md"
+                    className="rounded-xl !mt-0 !bg-gradient-to-br !from-slate-800 !to-slate-900"
+                    customStyle={{
+                      borderRadius: '0.75rem',
+                      padding: '1.25rem',
+                      paddingTop: '1.75rem',
+                    }}
                   >
                     {codeContent.replace(/\n$/, '')}
                   </SyntaxHighlighter>
                 </div>
               ) : (
-                <code {...props} className={`${className} bg-gray-200 text-gray-900 rounded px-1 py-0.5`}>
+                <code {...props} className="bg-gradient-to-r from-indigo-100/70 to-blue-100/50 text-indigo-800 rounded-md px-1.5 py-0.5 text-sm font-medium border border-indigo-200/40">
                   {children}
                 </code>
               );
-            }
+            },
+            // Handle tables
+            table: ({ children }) => (
+              <div className="overflow-x-auto my-4">
+                <table className="w-full border-collapse rounded-xl overflow-hidden border border-indigo-200/40 shadow-sm">{children}</table>
+              </div>
+            ),
+            th: ({ children }) => (
+              <th className="bg-gradient-to-r from-indigo-100 to-blue-100 text-slate-800 font-semibold text-left px-4 py-2.5 border-b-2 border-indigo-300/50">{children}</th>
+            ),
+            td: ({ children }) => (
+              <td className="px-4 py-2.5 border-b border-indigo-100/40 text-slate-700">{children}</td>
+            ),
           }}
           remarkPlugins={[remarkGfm, remarkBreaks]}
         >
@@ -622,69 +655,22 @@ export default function InstructAgentPage() {
   const isInputEmpty = input.trim() === '';
 
   return (
-    <main className={`min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-4 px-4 ${
-      isExpanded ? 'ml-64' : 'ml-16'
+    <main className={`h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-100/40 p-4 ${isExpanded ? 'ml-64' : 'ml-16'
     } transition-all duration-300`}>
-      <div className="w-full mx-auto flex flex-col h-screen">
+      <div className="w-full h-full flex flex-col">
 
-        <div className="flex justify-between items-center bg-white p-4 rounded-lg border-2 border-gray-200 shadow-lg mb-4 relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-purple-600/5 z-0"></div>
+        <div className="flex-shrink-0 flex justify-center items-center bg-white/80 backdrop-blur-xl px-6 py-3 rounded-2xl border border-indigo-100/50 shadow-lg shadow-indigo-100/20 mb-4 relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-purple-500/5 z-0"></div>
+          <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-blue-400/10 to-transparent rounded-full blur-2xl -translate-x-1/2 -translate-y-1/2"></div>
+          <div className="absolute bottom-0 right-0 w-24 h-24 bg-gradient-to-tl from-purple-400/10 to-transparent rounded-full blur-2xl translate-x-1/2 translate-y-1/2"></div>
           
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-700 bg-clip-text text-transparent relative z-10">
-            Instruct Agent
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent relative z-10 tracking-tight">
+            ✨ Instruct Agent
           </h1>
-          <div className="flex gap-4 relative z-10">
-            <div className="relative border-2 border-gray-200 hover:border-blue-400 transition-colors rounded-lg shadow-sm">
-              <select
-                value={selectedTool?.id ?? ''}
-                onChange={handleToolChange}
-                disabled={isLoadingTools || tools.length === 0}
-                className="appearance-none bg-white px-4 py-2 pr-8 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg disabled:bg-gray-100 disabled:text-gray-400"
-                aria-label="Select tool"
-                title="Select tool"
-              >
-                {tools.length === 0 ? (
-                  <option value="">{isLoadingTools ? '加载工具中...' : '无可用工具'}</option>
-                ) : (
-                  tools.map(tool => (
-                    <option key={tool.id} value={tool.id}>
-                      {tool.name}
-                    </option>
-                  ))
-                )}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                </svg>
-              </div>
-            </div>
-            
-            <div className="relative border-2 border-gray-200 hover:border-blue-400 transition-colors rounded-lg shadow-sm">
-              <select
-                value={selectedModel.id}
-                onChange={(e) => setSelectedModel(models.find(m => m.id === e.target.value) || models[0])}
-                className="appearance-none bg-white px-4 py-2 pr-8 hover:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg"
-                aria-label="Select model"
-                title="Select model"
-              >
-                {models.map(model => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
-                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
-                </svg>
-              </div>
-            </div>
-          </div>
         </div>
 
         {error && (
-          <div className="bg-red-50 border-2 border-red-200 text-red-600 px-4 py-3 rounded-lg shadow-sm mb-4">
+          <div className="flex-shrink-0 bg-red-50/80 backdrop-blur-sm border border-red-200/60 text-red-600 px-4 py-3 rounded-xl shadow-sm mb-4">
             <div className="flex items-center space-x-2">
               <svg className="h-5 w-5" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" stroke="currentColor">
                 <path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -694,61 +680,94 @@ export default function InstructAgentPage() {
           </div>
         )}
 
-        <div className="flex flex-1 gap-4 mb-4" style={{ height: componentHeight }}>
-          <div className="bg-white rounded-lg p-4 border-2 border-gray-200 shadow-lg flex flex-col w-1/3 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-purple-600/5 z-0"></div>
-            <div className="flex items-center justify-between mb-3 relative z-10">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="material-icons-outlined text-blue-600">edit_note</span>
-                <p className="text-sm font-medium text-gray-700">System Prompt:</p>
+        <div className="flex flex-1 gap-4 min-h-0">
+          <div className="bg-white/70 backdrop-blur-xl rounded-2xl p-4 border border-indigo-100/50 shadow-lg shadow-indigo-100/20 flex flex-col w-1/3 relative min-h-0">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5 z-0"></div>
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-gradient-to-br from-indigo-400/10 to-transparent rounded-full blur-2xl"></div>
+            
+            {/* 卡片头部 - 工具选择下拉列表作为标题 */}
+            <div className="flex items-center justify-between mb-3 relative z-50 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="material-icons-outlined text-indigo-500 text-lg">build</span>
+                <CustomSelect
+                  value={selectedTool?.id ?? ''}
+                  onChange={(value) => {
+                    const tool = tools.find(t => t.id === value) ?? null;
+                    setPromptError(null);
+                    setSelectedTool(tool);
+                  }}
+                  options={tools.length === 0 
+                    ? [{ value: '', label: isLoadingTools ? '加载工具中...' : '无可用工具' }]
+                    : tools.map(tool => ({ value: tool.id, label: tool.name }))
+                  }
+                  disabled={isLoadingTools || tools.length === 0}
+                  placeholder="选择工具..."
+                />
+                
+                {/* 加载状态和错误提示 - 放在下拉列表旁边 */}
                 {isPromptLoading && (
-                  <span className="text-xs text-blue-600">加载中...</span>
+                  <span className="text-xs text-indigo-500 animate-pulse flex items-center gap-1">
+                    <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </span>
                 )}
                 {!isPromptLoading && promptError && (
-                  <span className="text-xs text-red-500 sm:hidden">{promptError}</span>
+                  <span className="text-xs text-amber-600 truncate max-w-[100px]" title={promptError}>⚠</span>
                 )}
               </div>
-              <div className="flex items-center gap-3">
-                {promptError && (
-                  <span className="hidden text-xs text-red-500 sm:inline">{promptError}</span>
-                )}
-                <button
-                  onClick={resetPrompt}
-                  className="text-xs text-blue-600 hover:text-blue-700 transition-colors hover:bg-blue-50 px-2 py-1 rounded"
-                >
-                  从 GitHub 重新加载
-                </button>
-              </div>
+              
+              <button
+                onClick={resetPrompt}
+                className="text-xs text-indigo-500 hover:text-indigo-700 transition-all hover:bg-indigo-50 p-1.5 rounded-lg"
+                title="从 GitHub 重新加载"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
             </div>
-            <div className="flex-1 relative z-10">
+            
+            <div className="flex-1 relative z-10 min-h-0">
               <textarea
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
-                className="instruction-template w-full h-full p-3 rounded-lg border-2 border-gray-200 hover:border-gray-300 transition-colors bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-gray-800 font-medium resize-none shadow-inner"
+                className="instruction-template w-full h-full p-4 rounded-xl border border-indigo-100/60 hover:border-indigo-200 transition-all bg-white/80 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-transparent text-slate-700 font-medium resize-none shadow-inner"
                 placeholder="Enter system prompt..."
               />
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow-lg border-2 border-gray-200 overflow-hidden flex-1 flex flex-col relative">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-purple-600/5 z-0"></div>
-            <div className="border-b border-gray-200 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 flex justify-between items-center relative z-10">
-              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                <span className="material-icons-outlined text-blue-600">chat</span>
-                <span>Chat History</span>
+          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg shadow-indigo-100/20 border border-indigo-100/50 overflow-hidden flex-1 flex flex-col relative min-h-0">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-transparent to-purple-500/5 z-0 pointer-events-none"></div>
+            <div className="border-b border-indigo-100/60 px-4 py-3 bg-gradient-to-r from-slate-50/80 to-indigo-50/50 backdrop-blur-sm flex justify-between items-center relative z-10 flex-shrink-0">
+              {/* 模型选择下拉列表作为标题 */}
+              <div className="flex items-center gap-2">
+                <span className="material-icons-outlined text-indigo-500 text-lg">smart_toy</span>
+                <CustomSelect
+                  value={selectedModel.id}
+                  onChange={(value) => setSelectedModel(models.find(m => m.id === value) || models[0])}
+                  options={models.map(model => ({ value: model.id, label: model.name }))}
+                  placeholder="选择模型..."
+                />
               </div>
+              
+              {/* 清空按钮 */}
               <button 
                 onClick={() => setMessages([])}
-                className="text-xs text-blue-600 hover:text-blue-700 transition-colors hover:bg-blue-50 px-2 py-1 rounded"
-                title="Clear chat history"
+                className="text-xs text-indigo-500 hover:text-indigo-700 transition-all hover:bg-indigo-50 p-1.5 rounded-lg"
+                title="清空聊天记录"
               >
-                Clear Chat
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
               </button>
             </div>
             
             <div 
               ref={chatContainerRef}
-              className="p-4 space-y-4 flex-1 overflow-y-auto scroll-smooth relative z-10"
+              className="p-4 space-y-4 flex-1 overflow-y-auto scroll-smooth relative z-10 min-h-0"
             >
               {messages.map((msg, idx) => (
                 <div
@@ -756,18 +775,17 @@ export default function InstructAgentPage() {
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`group relative p-4 rounded-lg max-w-[80%] ${
-                      msg.role === 'user' 
-                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white border-none user-message shadow-md' 
+                    className={`group relative p-4 rounded-2xl max-w-[80%] transition-all duration-200 ${msg.role === 'user' 
+                        ? 'bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-600 text-white border-none user-message shadow-lg shadow-indigo-200/50' 
                         : msg.role === 'system'
-                        ? 'bg-gray-100 text-gray-700 border border-gray-200'
-                        : 'bg-gradient-to-br from-indigo-50 to-blue-100 text-gray-800 border border-blue-300 hover:border-blue-400 shadow-md assistant-message'
+                        ? 'bg-slate-100/80 text-slate-700 border border-slate-200/60'
+                        : 'bg-white/90 backdrop-blur-sm text-slate-800 border border-indigo-100/60 shadow-lg shadow-indigo-100/30 hover:shadow-xl hover:shadow-indigo-100/40 assistant-message markdown-content'
                     }`}
                   >
                     {msg.role !== 'system' && (
                       <button
                         onClick={() => copyToClipboard(msg.content)}
-                        className="absolute right-2 top-2 p-1 rounded-full bg-gray-700/20 text-current opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute right-2 top-2 p-1.5 rounded-lg bg-slate-900/10 hover:bg-slate-900/20 text-current opacity-0 group-hover:opacity-100 transition-all duration-200"
                         title="Copy message"
                       >
                         <span className="material-icons-outlined text-sm">content_copy</span>
@@ -782,24 +800,30 @@ export default function InstructAgentPage() {
                 </div>
               ))}
               {isLoading && (
-                <div className="flex justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <div className="flex justify-center py-2">
+                  <div className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full shadow-sm border border-indigo-100/50">
+                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-200 border-t-indigo-500"></div>
+                    <span className="text-sm text-slate-600">Thinking...</span>
+                  </div>
                 </div>
               )}
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t border-gray-200 mt-auto relative z-10">
+            <div className="border-t border-indigo-100/60 mt-auto relative z-10">
               {hasContextItems && (
-                <div className="p-3 bg-blue-50 border-b border-blue-200">
-                  <div className="flex justify-between items-center mb-1">
-                    <h3 className="text-sm font-medium text-blue-700">Context Attachments</h3>
+                <div className="p-3 bg-gradient-to-r from-indigo-50/80 to-blue-50/50 border-b border-indigo-100/40">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-sm font-semibold text-indigo-700 flex items-center gap-1.5">
+                      <span className="material-icons-outlined text-base">attachment</span>
+                      Context Attachments
+                    </h3>
                     <button 
                       onClick={() => {
                         setDocumentContext([]);
                         setImageAttachments([]);
                       }}
-                      className="text-xs text-blue-600 hover:text-blue-800 transition-colors hover:bg-blue-100 px-2 py-1 rounded"
+                      className="text-xs text-indigo-600 hover:text-indigo-700 transition-all hover:bg-indigo-100/50 px-2.5 py-1 rounded-lg font-medium"
                     >
                       Clear All
                     </button>
@@ -808,10 +832,9 @@ export default function InstructAgentPage() {
                     {documentContext.map((doc, idx) => (
                       <div 
                         key={`doc-${idx}`} 
-                        className={`flex items-center px-3 py-1 rounded-lg text-sm border ${
-                          doc.error 
-                            ? 'bg-red-50 text-red-700 border-red-200' 
-                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        className={`flex items-center px-3 py-1.5 rounded-lg text-sm border transition-all ${doc.error 
+                            ? 'bg-red-50/80 text-red-700 border-red-200/60' 
+                            : 'bg-white/80 backdrop-blur-sm text-indigo-700 border-indigo-200/60 shadow-sm'
                         }`}
                       >
                         <span className="material-icons-outlined mr-2 text-sm">
@@ -836,10 +859,9 @@ export default function InstructAgentPage() {
                     {imageAttachments.map((img, idx) => (
                       <div 
                         key={`image-${idx}`} 
-                        className={`flex items-center px-3 py-1 rounded-lg text-sm border ${
-                          img.error 
-                            ? 'bg-red-50 text-red-700 border-red-200' 
-                            : 'bg-purple-50 text-purple-700 border-purple-200'
+                        className={`flex items-center px-3 py-1.5 rounded-lg text-sm border transition-all ${img.error 
+                            ? 'bg-red-50/80 text-red-700 border-red-200/60' 
+                            : 'bg-white/80 backdrop-blur-sm text-purple-700 border-purple-200/60 shadow-sm'
                         }`}
                       >
                         <span className="material-icons-outlined mr-2 text-sm">
@@ -865,15 +887,15 @@ export default function InstructAgentPage() {
                 </div>
               )}
 
-              <div className="p-3 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+              <div className="p-3 bg-gradient-to-r from-slate-50/80 to-indigo-50/30 border-b border-indigo-100/40">
                 {isProcessingFile && (
-                  <div className="flex items-center text-sm text-gray-600">
-                    <div className="animate-spin h-4 w-4 border-b-2 border-blue-600 rounded-full mr-2"></div>
+                  <div className="flex items-center text-sm text-slate-600">
+                    <div className="animate-spin h-4 w-4 border-2 border-indigo-200 border-t-indigo-500 rounded-full mr-2"></div>
                     <span>Processing files...</span>
                   </div>
                 )}
               </div>
-              <div className="p-3 bg-gradient-to-r from-gray-50 to-gray-100">
+              <div className="p-3 bg-gradient-to-r from-white/80 to-indigo-50/30 backdrop-blur-sm">
                 <form ref={formRef} onSubmit={handleSubmit} className="flex gap-2">
                   <input 
                     type="file"
@@ -889,7 +911,7 @@ export default function InstructAgentPage() {
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-gray-600 hover:bg-gray-100 border border-gray-200 rounded-lg flex items-center justify-center transition-colors"
+                    className="p-2.5 text-indigo-500 hover:text-indigo-600 hover:bg-indigo-50 border border-indigo-200/60 rounded-xl flex items-center justify-center transition-all duration-200"
                     title="Upload documents"
                     disabled={isLoading || isProcessingFile}
                   >
@@ -899,7 +921,7 @@ export default function InstructAgentPage() {
                   <div className="relative flex-1">
                     <div
                       ref={richTextInputRef}
-                      className="rich-text-input flex-1 min-h-[2.75rem] max-h-[4.5rem] w-full overflow-y-auto p-2 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-inner whitespace-pre-wrap break-words"
+                      className="rich-text-input flex-1 min-h-[2.75rem] max-h-[4.5rem] w-full overflow-y-auto p-3 rounded-xl border border-indigo-200/60 hover:border-indigo-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-transparent shadow-sm bg-white/80 backdrop-blur-sm whitespace-pre-wrap break-words text-slate-700"
                       contentEditable
                       onInput={handleEditorInput}
                       onKeyDown={handleEditorKeyDown}
@@ -911,7 +933,7 @@ export default function InstructAgentPage() {
                       suppressContentEditableWarning
                     />
                     {isInputEmpty && (
-                      <div className="pointer-events-none absolute left-3 top-2 text-gray-400 select-none">
+                      <div className="pointer-events-none absolute left-4 top-3 text-slate-400 select-none">
                         {inputPlaceholder}
                       </div>
                     )}
@@ -919,7 +941,7 @@ export default function InstructAgentPage() {
                   <button
                     type="submit"
                     disabled={isSubmitDisabled}
-                    className="px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg hover:from-blue-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 border-none"
+                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-600 text-white rounded-xl hover:from-indigo-600 hover:via-blue-600 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 border-none shadow-lg shadow-indigo-200/50 hover:shadow-xl hover:shadow-indigo-300/50 font-medium"
                   >
                     Send
                   </button>
