@@ -42,8 +42,17 @@ interface UploadedImage {
   error?: string;
 }
 
+// MCP 工具调用状态
+interface MCPToolCallStatus {
+  serverId: string;
+  toolName: string;
+  status: 'running' | 'completed' | 'error';
+  preview?: string;
+  error?: string;
+}
+
 export default function InstructAgentPage() {
-  const { isExpanded } = useSidebar();
+  const { isExpanded, enabledServerIds, mcpServers } = useSidebar();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -60,6 +69,7 @@ export default function InstructAgentPage() {
   const [imageAttachments, setImageAttachments] = useState<UploadedImage[]>([]);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [activeToolCalls, setActiveToolCalls] = useState<MCPToolCallStatus[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -423,6 +433,14 @@ export default function InstructAgentPage() {
         base64: img.base64
       }));
 
+      // 获取启用且已连接的 MCP 服务器 ID
+      const connectedMCPServerIds = mcpServers
+        .filter(s => s.isConnected && enabledServerIds.has(s.config.id))
+        .map(s => s.config.id);
+
+      // 清除之前的工具调用状态
+      setActiveToolCalls([]);
+
       const response = await fetch('/api/instruct-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -432,7 +450,8 @@ export default function InstructAgentPage() {
           prompt: combinedInput,
           tool: selectedTool.id,
           model: selectedModel.id,
-          imageAttachments: imagePayload
+          imageAttachments: imagePayload,
+          enabledMCPServers: connectedMCPServerIds,
         })
       });
 
@@ -477,6 +496,42 @@ export default function InstructAgentPage() {
                 return;
               }
               
+              // 处理 MCP 工具调用状态
+              if (parsedContent.type === 'tool_call') {
+                const { serverId, toolName, status, preview, error: toolError } = parsedContent;
+                setActiveToolCalls(prev => {
+                  // 查找是否已存在该工具调用
+                  const existingIndex = prev.findIndex(
+                    tc => tc.serverId === serverId && tc.toolName === toolName
+                  );
+                  
+                  const newStatus: MCPToolCallStatus = {
+                    serverId,
+                    toolName,
+                    status,
+                    preview,
+                    error: toolError,
+                  };
+                  
+                  if (existingIndex >= 0) {
+                    // 更新现有状态
+                    const updated = [...prev];
+                    updated[existingIndex] = newStatus;
+                    return updated;
+                  } else {
+                    // 添加新状态
+                    return [...prev, newStatus];
+                  }
+                });
+                continue;
+              }
+              
+              // 处理警告消息
+              if (parsedContent.type === 'warning') {
+                console.warn('[MCP Warning]', parsedContent.message);
+                continue;
+              }
+              
               // 处理正常的字符串内容
               if (typeof parsedContent === 'string') {
                 accumulatedContent += parsedContent;
@@ -499,6 +554,8 @@ export default function InstructAgentPage() {
       setMessages(prev => prev.slice(0, -1)); 
     } finally {
       setIsLoading(false);
+      // 清除工具调用状态
+      setActiveToolCalls([]);
     }
   };
 
@@ -665,7 +722,7 @@ export default function InstructAgentPage() {
   const isInputEmpty = input.trim() === '';
 
   return (
-    <main className={`h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-100/40 p-4 ${isExpanded ? 'ml-64' : 'ml-16'
+    <main className={`h-screen overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50/50 to-indigo-100/40 p-4 ${isExpanded ? 'ml-72' : 'ml-16'
     } transition-all duration-300`}>
       <div className="w-full h-full flex flex-col">
 
@@ -810,11 +867,51 @@ export default function InstructAgentPage() {
                 </div>
               ))}
               {isLoading && (
-                <div className="flex justify-center py-2">
+                <div className="flex flex-col items-center gap-2 py-2">
                   <div className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm rounded-full shadow-sm border border-indigo-100/50">
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-indigo-200 border-t-indigo-500"></div>
                     <span className="text-sm text-slate-600">Thinking...</span>
                   </div>
+                  
+                  {/* MCP 工具调用状态显示 */}
+                  {activeToolCalls.length > 0 && (
+                    <div className="w-full max-w-md space-y-2 mt-2">
+                      {activeToolCalls.map((tc, idx) => (
+                        <div 
+                          key={`${tc.serverId}-${tc.toolName}-${idx}`}
+                          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                            tc.status === 'running' 
+                              ? 'bg-indigo-50 border border-indigo-200'
+                              : tc.status === 'completed'
+                              ? 'bg-green-50 border border-green-200'
+                              : 'bg-red-50 border border-red-200'
+                          }`}
+                        >
+                          {tc.status === 'running' ? (
+                            <div className="animate-spin h-4 w-4 border-2 border-indigo-300 border-t-indigo-600 rounded-full"></div>
+                          ) : tc.status === 'completed' ? (
+                            <svg className="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-4 w-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-slate-700 truncate">
+                              {tc.toolName}
+                            </div>
+                            <div className="text-xs text-slate-500 truncate">
+                              {tc.serverId}
+                              {tc.preview && ` • ${tc.preview}`}
+                              {tc.error && ` • ${tc.error}`}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               <div ref={messagesEndRef} />
