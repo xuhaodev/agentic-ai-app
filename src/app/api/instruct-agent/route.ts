@@ -34,7 +34,10 @@ export async function POST(req: NextRequest) {
         }
       );
     }
-    console.log(`Selected tool: ${selectedTool.name}, System Prompt:`, systemPrompt);
+    const systemPromptPreview = systemPrompt.length > 100 
+      ? `${systemPrompt.substring(0, 100)}...` 
+      : systemPrompt;
+    console.log(`[Instruct Agent] Tool: ${selectedTool.name}, System Prompt: ${systemPromptPreview} (${systemPrompt.length} chars)`);
     
     // Check if prompt contains document context
     const hasDocumentContext = prompt.includes("==== DOCUMENT CONTEXT ====");
@@ -185,10 +188,14 @@ export async function POST(req: NextRequest) {
 
           // 处理返回的流
           let usage = null;
+          let totalOutputChars = 0;
+          let chunkCount = 0;
+          
           for await (const part of openAIStream) {
             const content = part.choices[0]?.delta?.content || '';
             if (content) {
-              console.log(`Streaming content chunk: "${content}"`);
+              totalOutputChars += content.length;
+              chunkCount++;
               
               // 发送文本内容，确保使用JSON格式化，保持SSE格式规范
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(content)}\n\n`));
@@ -199,10 +206,13 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // 记录使用情况统计
+          // 输出诊断摘要
+          console.log(`\n[Instruct Agent] === Response Summary ===`);
+          console.log(`  Output: ${totalOutputChars} chars in ${chunkCount} chunks`);
           if (usage) {
-            console.log(`Usage Statistics - Prompt tokens: ${usage.prompt_tokens}, Completion tokens: ${usage.completion_tokens}, Total tokens: ${usage.total_tokens}`);
+            console.log(`  Tokens: input=${usage.prompt_tokens}, output=${usage.completion_tokens}, total=${usage.total_tokens}`);
           }
+          console.log(`[Instruct Agent] ========================\n`);
 
           // 完成后关闭流
           controller.close();

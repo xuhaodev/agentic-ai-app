@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
@@ -59,10 +59,11 @@ export default function InstructAgentPage() {
   const [documentContext, setDocumentContext] = useState<UploadedDocument[]>([]);
   const [imageAttachments, setImageAttachments] = useState<UploadedImage[]>([]);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const richTextInputRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const selectedToolRef = useRef<string | null>(null);
 
@@ -136,18 +137,20 @@ export default function InstructAgentPage() {
     });
   };
 
-  const handleEditorInput = (event: React.FormEvent<HTMLDivElement>) => {
-    const textContent = event.currentTarget.innerText.replace(/\u00a0/g, ' ');
-    setInput(textContent);
+  const handleTextareaChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(event.target.value);
+    // Auto-resize textarea
+    const textarea = event.target;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
   };
 
-  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleTextareaKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
-      const textContent = event.currentTarget.innerText.replace(/\u00a0/g, ' ');
       const hasContext = documentContext.some(doc => doc.content && !doc.error) ||
         imageAttachments.some(img => img.base64 && !img.error);
 
-      if (isLoading || (textContent.trim() === '' && !hasContext)) {
+      if (isLoading || (input.trim() === '' && !hasContext)) {
         event.preventDefault();
         return;
       }
@@ -398,8 +401,10 @@ export default function InstructAgentPage() {
     }
 
     setInput('');
-    if (richTextInputRef.current) {
-      richTextInputRef.current.innerHTML = '';
+    setShowPreview(false);
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
     }
     setIsLoading(true);
 
@@ -522,7 +527,6 @@ export default function InstructAgentPage() {
   };
 
   // 更新 MessageContent 组件，支持更好的 Markdown 渲染
-
   const MessageContent = ({ content }: { content: string }) => {
     // Ensure content is always a string
     const safeContent = typeof content === 'string' ? content : '';
@@ -563,18 +567,15 @@ export default function InstructAgentPage() {
             a: ({ href, children }) => (
               <a href={href} className="text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300 underline-offset-2 transition-colors" target="_blank" rel="noopener noreferrer">{children}</a>
             ),
-            // Handle lists
+            // Handle lists - use native markdown list styles
             ul: ({ children }) => (
-              <ul className="space-y-1.5 my-3 pl-0">{children}</ul>
+              <ul className="list-disc pl-6 my-3 space-y-1 marker:text-indigo-500">{children}</ul>
             ),
-            ol: ({ children }) => (
-              <ol className="space-y-1.5 my-3 pl-5 list-decimal marker:text-indigo-500 marker:font-semibold">{children}</ol>
+            ol: ({ children, start, ...props }) => (
+              <ol className="list-decimal pl-6 my-3 space-y-1 marker:text-indigo-500 marker:font-semibold" start={start} {...props}>{children}</ol>
             ),
             li: ({ children }) => (
-              <li className="text-slate-700 leading-relaxed flex items-start gap-2">
-                <span className="text-indigo-500 mt-1.5 flex-shrink-0">▸</span>
-                <span>{children}</span>
-              </li>
+              <li className="text-slate-700 leading-relaxed pl-1">{children}</li>
             ),
             // Handle blockquotes
             blockquote: ({ children }) => (
@@ -621,20 +622,29 @@ export default function InstructAgentPage() {
                 </code>
               );
             },
-            // Handle tables
+            // Handle tables with proper structure
             table: ({ children }) => (
               <div className="overflow-x-auto my-4">
-                <table className="w-full border-collapse rounded-xl overflow-hidden border border-indigo-200/40 shadow-sm">{children}</table>
+                <table className="w-full border-collapse rounded-xl overflow-hidden border border-indigo-200/40 shadow-sm table-auto">{children}</table>
               </div>
             ),
+            thead: ({ children }) => (
+              <thead className="bg-gradient-to-r from-indigo-50 to-blue-50">{children}</thead>
+            ),
+            tbody: ({ children }) => (
+              <tbody className="divide-y divide-indigo-100/40">{children}</tbody>
+            ),
+            tr: ({ children }) => (
+              <tr className="hover:bg-indigo-50/30 transition-colors">{children}</tr>
+            ),
             th: ({ children }) => (
-              <th className="bg-gradient-to-r from-indigo-100 to-blue-100 text-slate-800 font-semibold text-left px-4 py-2.5 border-b-2 border-indigo-300/50">{children}</th>
+              <th className="bg-gradient-to-r from-indigo-100 to-blue-100 text-slate-800 font-semibold text-left px-4 py-2.5 border-b-2 border-indigo-300/50 whitespace-nowrap">{children}</th>
             ),
             td: ({ children }) => (
-              <td className="px-4 py-2.5 border-b border-indigo-100/40 text-slate-700">{children}</td>
+              <td className="px-4 py-2.5 border-b border-indigo-100/40 text-slate-700 align-top">{children}</td>
             ),
           }}
-          remarkPlugins={[remarkGfm, remarkBreaks]}
+          remarkPlugins={[remarkGfm]}
         >
           {safeContent || ' '}
         </ReactMarkdown>
@@ -919,23 +929,43 @@ export default function InstructAgentPage() {
                   </button>
                   
                   <div className="relative flex-1">
-                    <div
-                      ref={richTextInputRef}
-                      className="rich-text-input flex-1 min-h-[2.75rem] max-h-[4.5rem] w-full overflow-y-auto p-3 rounded-xl border border-indigo-200/60 hover:border-indigo-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-transparent shadow-sm bg-white/80 backdrop-blur-sm whitespace-pre-wrap break-words text-slate-700"
-                      contentEditable
-                      onInput={handleEditorInput}
-                      onKeyDown={handleEditorKeyDown}
-                      role="textbox"
-                      aria-multiline="true"
-                      aria-label="Message input"
-                      tabIndex={0}
-                      data-placeholder={inputPlaceholder}
-                      suppressContentEditableWarning
-                    />
-                    {isInputEmpty && (
-                      <div className="pointer-events-none absolute left-4 top-3 text-slate-400 select-none">
-                        {inputPlaceholder}
+                    {/* 预览/编辑切换按钮 */}
+                    {input.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => setShowPreview(!showPreview)}
+                        className="absolute right-2 top-2 z-10 p-1 rounded-md text-xs text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 transition-all"
+                        title={showPreview ? '编辑' : '预览 Markdown'}
+                      >
+                        <span className="material-icons-outlined text-sm">
+                          {showPreview ? 'edit' : 'visibility'}
+                        </span>
+                      </button>
+                    )}
+                    
+                    {showPreview && input.trim() ? (
+                      /* Markdown 预览模式 */
+                      <div 
+                        className="min-h-[2.75rem] max-h-[200px] w-full overflow-y-auto p-3 pr-10 rounded-xl border border-indigo-200/60 bg-gradient-to-r from-indigo-50/50 to-blue-50/30 text-slate-700"
+                        onClick={() => setShowPreview(false)}
+                      >
+                        <div className="prose prose-sm max-w-none prose-slate text-slate-700">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {input}
+                          </ReactMarkdown>
+                        </div>
                       </div>
+                    ) : (
+                      /* 编辑模式 - 使用 textarea */
+                      <textarea
+                        ref={textareaRef}
+                        value={input}
+                        onChange={handleTextareaChange}
+                        onKeyDown={handleTextareaKeyDown}
+                        className="w-full min-h-[2.75rem] max-h-[200px] p-3 pr-10 rounded-xl border border-indigo-200/60 hover:border-indigo-300 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-400/50 focus:border-transparent shadow-sm bg-white/80 backdrop-blur-sm text-slate-700 resize-none font-mono text-sm"
+                        placeholder={inputPlaceholder}
+                        rows={1}
+                      />
                     )}
                   </div>
                   <button
