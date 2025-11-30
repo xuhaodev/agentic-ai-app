@@ -32,13 +32,22 @@ function generateRequestId(): number {
 }
 
 /**
+ * SSE 响应解析结果
+ */
+interface SSEParseResult<T> {
+  result: T;
+  sessionId?: string;
+}
+
+/**
  * 解析 SSE 响应
  */
-async function parseSSEResponse<T>(response: Response): Promise<T> {
+async function parseSSEResponse<T>(response: Response): Promise<SSEParseResult<T>> {
   const text = await response.text();
   const lines = text.split('\n');
   
   let result: T | null = null;
+  const sessionId = response.headers.get('mcp-session-id') || undefined;
   
   for (const line of lines) {
     if (line.startsWith('data: ')) {
@@ -65,7 +74,15 @@ async function parseSSEResponse<T>(response: Response): Promise<T> {
     throw new Error('No valid response data found in SSE stream');
   }
   
-  return result;
+  return { result, sessionId };
+}
+
+/**
+ * MCP 请求结果
+ */
+interface MCPRequestResult<T> {
+  result: T;
+  sessionId?: string;
 }
 
 /**
@@ -75,8 +92,9 @@ async function sendMCPRequest<TParams, TResult>(
   endpoint: string,
   method: string,
   params?: TParams,
-  auth?: MCPServerConfig['auth']
-): Promise<TResult> {
+  auth?: MCPServerConfig['auth'],
+  sessionId?: string
+): Promise<MCPRequestResult<TResult>> {
   const request: MCPRequest<TParams> = {
     jsonrpc: '2.0',
     id: generateRequestId(),
@@ -88,6 +106,11 @@ async function sendMCPRequest<TParams, TResult>(
     'Content-Type': 'application/json',
     'Accept': 'application/json, text/event-stream',
   };
+
+  // 添加 session ID
+  if (sessionId) {
+    headers['mcp-session-id'] = sessionId;
+  }
 
   // 添加认证头
   if (auth) {
@@ -118,12 +141,13 @@ async function sendMCPRequest<TParams, TResult>(
   
   // 普通 JSON 响应
   const data: MCPResponse<TResult> = await response.json();
+  const newSessionId = response.headers.get('mcp-session-id') || undefined;
 
   if (data.error) {
     throw new Error(`MCP error: ${data.error.message} (code: ${data.error.code})`);
   }
 
-  return data.result as TResult;
+  return { result: data.result as TResult, sessionId: newSessionId };
 }
 
 /**
@@ -135,6 +159,7 @@ export class MCPClient {
   private config: MCPServerConfig;
   private tools: MCPTool[] = [];
   private initialized = false;
+  private sessionId?: string;
 
   constructor(config: MCPServerConfig) {
     this.config = config;
@@ -165,7 +190,7 @@ export class MCPClient {
    * 初始化与 MCP 服务器的连接
    */
   async initialize(): Promise<MCPInitializeResult> {
-    const result = await sendMCPRequest<object, MCPInitializeResult>(
+    const { result, sessionId } = await sendMCPRequest<object, MCPInitializeResult>(
       this.config.endpoint,
       'initialize',
       {
@@ -181,6 +206,14 @@ export class MCPClient {
       this.config.auth
     );
 
+    // 保存 session ID
+    if (sessionId) {
+      this.sessionId = sessionId;
+    }
+
+    // 发送 initialized 通知（MCP 规范要求）
+    await this.sendNotification('notifications/initialized', {});
+
     this.initialized = true;
     
     // 初始化成功后自动获取工具列表
@@ -190,14 +223,52 @@ export class MCPClient {
   }
 
   /**
+   * 发送通知（不期望响应）
+   */
+  private async sendNotification(method: string, params: object): Promise<void> {
+    const notification = {
+      jsonrpc: '2.0',
+      method,
+      params,
+    };
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream',
+    };
+
+    // 添加 session ID
+    if (this.sessionId) {
+      headers['mcp-session-id'] = this.sessionId;
+    }
+
+    // 添加认证头
+    if (this.config.auth) {
+      if (this.config.auth.type === 'bearer' && this.config.auth.token) {
+        headers['Authorization'] = `Bearer ${this.config.auth.token}`;
+      } else if (this.config.auth.type === 'api-key' && this.config.auth.token) {
+        const headerName = this.config.auth.headerName || 'X-API-Key';
+        headers[headerName] = this.config.auth.token;
+      }
+    }
+
+    await fetch(this.config.endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(notification),
+    });
+  }
+
+  /**
    * 获取服务器提供的工具列表
    */
   async listTools(): Promise<MCPTool[]> {
-    const result = await sendMCPRequest<object, MCPToolsListResult>(
+    const { result } = await sendMCPRequest<object, MCPToolsListResult>(
       this.config.endpoint,
       'tools/list',
       {},
-      this.config.auth
+      this.config.auth,
+      this.sessionId
     );
 
     this.tools = result.tools || [];
@@ -208,11 +279,12 @@ export class MCPClient {
    * 调用工具
    */
   async callTool(params: MCPToolCallParams): Promise<MCPToolCallResult> {
-    const result = await sendMCPRequest<MCPToolCallParams, MCPToolCallResult>(
+    const { result } = await sendMCPRequest<MCPToolCallParams, MCPToolCallResult>(
       this.config.endpoint,
       'tools/call',
       params,
-      this.config.auth
+      this.config.auth,
+      this.sessionId
     );
 
     return result;
@@ -224,6 +296,7 @@ export class MCPClient {
   disconnect(): void {
     this.initialized = false;
     this.tools = [];
+    this.sessionId = undefined;
   }
 }
 

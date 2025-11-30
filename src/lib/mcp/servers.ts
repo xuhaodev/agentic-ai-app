@@ -21,7 +21,28 @@ export const MCP_SERVERS: MCPServerConfig[] = [
       type: 'none',
     },
   },
-  // 可以在这里添加更多 MCP 服务器
+  {
+    id: 'web-fetch',
+    name: 'Web Fetch',
+    description: '从网页获取内容并转换为 Markdown 格式',
+    endpoint: 'https://remote.mcpservers.org/fetch/mcp',
+    icon: 'W',
+    enabled: false,
+    auth: {
+      type: 'none',
+    },
+  },
+  {
+    id: 'deepwiki',
+    name: 'DeepWiki',
+    description: '深度 Wiki 知识库搜索和问答',
+    endpoint: 'https://mcp.deepwiki.com/mcp',
+    icon: 'D',
+    enabled: false,
+    auth: {
+      type: 'none',
+    },
+  },
 ];
 
 /**
