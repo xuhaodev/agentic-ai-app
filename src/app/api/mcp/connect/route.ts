@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMCPServerById } from '@/lib/mcp/servers';
 import { MCPClient } from '@/lib/mcp/client';
+import { ARXIV_TOOLS } from '@/lib/mcp/arxiv-client';
 
 // 服务器端的 MCP 客户端缓存
 const clientCache = new Map<string, MCPClient>();
@@ -29,6 +30,16 @@ export async function POST(req: NextRequest) {
         { error: `Server not found: ${serverId}` },
         { status: 404 }
       );
+    }
+
+    // 处理本地 arXiv 服务器
+    if (serverId === 'arxiv') {
+      return NextResponse.json({
+        serverId,
+        serverName: serverConfig.name,
+        connected: true,
+        tools: ARXIV_TOOLS,
+      });
     }
 
     // 检查缓存中是否有已连接的客户端

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getMCPServerById } from '@/lib/mcp/servers';
 import { MCPClient, mcpResultToText } from '@/lib/mcp/client';
+import { callArxivTool } from '@/lib/mcp/arxiv-client';
 
 // 导入连接路由中的客户端缓存访问函数
 // 注意：由于 Next.js 的模块隔离，我们需要维护自己的缓存或重新连接
@@ -40,6 +41,19 @@ export async function POST(req: NextRequest) {
         { error: 'Missing serverId or toolName parameter' },
         { status: 400 }
       );
+    }
+
+    // 处理本地 arXiv 工具调用
+    if (serverId === 'arxiv') {
+      const result = await callArxivTool(toolName, args || {});
+      
+      return NextResponse.json({
+        serverId,
+        toolName,
+        result,
+        text: result.content?.map(c => c.text).filter(Boolean).join('\n\n') || '',
+        isError: result.isError || false,
+      });
     }
 
     // 获取或创建客户端

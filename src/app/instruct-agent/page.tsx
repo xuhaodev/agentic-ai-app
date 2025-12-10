@@ -12,6 +12,7 @@ import type { ToolDefinition } from '@/lib/instruct-agent/tools-service';
 import { extractTextFromFile } from '@/lib/instruct-agent/file-parser';
 import { useSidebar } from '@/components/SidebarContext';
 import CustomSelect from '@/components/CustomSelect';
+import MermaidDiagram from '@/components/MermaidDiagram';
 
 interface CodeProps {
   node?: any;
@@ -438,6 +439,14 @@ export default function InstructAgentPage() {
         .filter(s => s.isConnected && enabledServerIds.has(s.config.id))
         .map(s => s.config.id);
 
+      console.log('[MCP Debug] All servers:', mcpServers.map(s => ({
+        id: s.config.id,
+        isConnected: s.isConnected,
+        isEnabled: enabledServerIds.has(s.config.id),
+        toolCount: s.tools.length
+      })));
+      console.log('[MCP Debug] Connected server IDs to send:', connectedMCPServerIds);
+
       // 清除之前的工具调用状态
       setActiveToolCalls([]);
 
@@ -583,64 +592,87 @@ export default function InstructAgentPage() {
     }
   };
 
-  // 更新 MessageContent 组件，支持更好的 Markdown 渲染
+  // 更新 MessageContent 组件，支持更好的 Markdown 渲染和 Mermaid 图表
   const MessageContent = ({ content }: { content: string }) => {
     // Ensure content is always a string
     const safeContent = typeof content === 'string' ? content : '';
     
     return (
-      <div className="prose prose-sm max-w-none prose-slate font-medium text-slate-800">
+      <div className="prose prose-sm max-w-none prose-slate">
         <ReactMarkdown
           components={{
             // Properly handle paragraphs
             p: ({ children }) => (
-              <p className="mb-4 last:mb-0 text-slate-700 leading-relaxed">{children}</p>
+              <p className="mb-3 last:mb-0 text-slate-700 leading-relaxed text-[15px]">{children}</p>
             ),
             // Handle headings with high contrast
             h1: ({ children }) => (
-              <h1 className="text-xl font-bold text-slate-900 border-b border-indigo-200/60 pb-2 mb-4">{children}</h1>
+              <h1 className="text-xl font-bold text-slate-900 border-b border-indigo-200/60 pb-2 mb-4 mt-6 first:mt-0">{children}</h1>
             ),
             h2: ({ children }) => (
-              <h2 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <h2 className="text-lg font-bold text-slate-800 mb-3 mt-5 first:mt-0 flex items-center gap-2">
                 <span className="w-1 h-5 bg-gradient-to-b from-indigo-500 to-blue-500 rounded-full"></span>
                 {children}
               </h2>
             ),
             h3: ({ children }) => (
-              <h3 className="text-base font-bold text-slate-800 mb-2">{children}</h3>
+              <h3 className="text-base font-bold text-slate-800 mb-2 mt-4 first:mt-0">{children}</h3>
             ),
             h4: ({ children }) => (
-              <h4 className="text-base font-semibold text-slate-700 mb-2">{children}</h4>
+              <h4 className="text-sm font-semibold text-slate-700 mb-2 mt-3 first:mt-0">{children}</h4>
             ),
-            // Handle strong/bold with high contrast
+            // Handle strong/bold - simplified style
             strong: ({ children }) => (
-              <strong className="font-bold text-slate-900 bg-gradient-to-r from-indigo-100/60 to-blue-100/40 px-1 py-0.5 rounded border-b-2 border-indigo-400/50">{children}</strong>
+              <strong className="font-semibold text-slate-900">{children}</strong>
             ),
             // Handle emphasis/italic
             em: ({ children }) => (
-              <em className="text-indigo-700 italic">{children}</em>
+              <em className="text-slate-600 italic">{children}</em>
             ),
             // Handle links
             a: ({ href, children }) => (
-              <a href={href} className="text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300 underline-offset-2 transition-colors" target="_blank" rel="noopener noreferrer">{children}</a>
+              <a href={href} className="text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300/50 underline-offset-2 transition-colors" target="_blank" rel="noopener noreferrer">{children}</a>
             ),
-            // Handle lists - use native markdown list styles
+            // Handle lists
             ul: ({ children }) => (
-              <ul className="list-disc pl-6 my-3 space-y-1 marker:text-indigo-500">{children}</ul>
+              <ul className="my-2 space-y-1 pl-0">{children}</ul>
             ),
             ol: ({ children, start, ...props }) => (
-              <ol className="list-decimal pl-6 my-3 space-y-1 marker:text-indigo-500 marker:font-semibold" start={start} {...props}>{children}</ol>
+              <ol className="my-2 space-y-1 pl-0 list-none" start={start} {...props}>
+                {React.Children.map(children, (child, index) => {
+                  if (React.isValidElement(child)) {
+                    return React.cloneElement(child as React.ReactElement<any>, { 'data-index': (start || 1) + index });
+                  }
+                  return child;
+                })}
+              </ol>
             ),
-            li: ({ children }) => (
-              <li className="text-slate-700 leading-relaxed pl-1">{children}</li>
-            ),
+            li: ({ children, ...props }) => {
+              const dataIndex = (props as any)['data-index'];
+              const isOrdered = dataIndex !== undefined;
+              
+              return (
+                <li className="text-slate-700 leading-relaxed flex items-start gap-2 text-[15px]">
+                  {isOrdered ? (
+                    <span className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 text-xs font-semibold flex items-center justify-center mt-0.5">
+                      {dataIndex}
+                    </span>
+                  ) : (
+                    <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-indigo-400 mt-2"></span>
+                  )}
+                  <span className="flex-1">{children}</span>
+                </li>
+              );
+            },
             // Handle blockquotes
             blockquote: ({ children }) => (
-              <blockquote className="border-l-4 border-indigo-400 bg-gradient-to-r from-indigo-50/80 to-transparent pl-4 pr-2 py-2 my-3 rounded-r-lg italic text-slate-600">{children}</blockquote>
+              <blockquote className="border-l-3 border-indigo-400 bg-indigo-50/50 pl-4 pr-3 py-2 my-3 rounded-r-lg text-slate-600 text-sm">{children}</blockquote>
             ),
-            // Handle code blocks with proper formatting
+            // Handle code blocks with Mermaid support
             code: ({ inline, className, children, ...props }: CodeProps) => {
               const match = /language-(\w+)/.exec(className || '');
+              const language = match ? match[1] : '';
+              
               // Ensure children is always a string
               const codeContent = Array.isArray(children) 
                 ? children.join('') 
@@ -648,9 +680,24 @@ export default function InstructAgentPage() {
                   ? children 
                   : String(children || '');
               
+              // Handle Mermaid diagrams
+              if (language === 'mermaid') {
+                return <MermaidDiagram chart={codeContent} className="my-4" />;
+              }
+              
+              // Handle ASCII art / text diagrams - render in monospace box
+              if (language === 'ascii' || language === 'text' || language === 'plaintext') {
+                return (
+                  <div className="my-4 p-4 bg-slate-50 rounded-xl border border-slate-200 overflow-x-auto">
+                    <pre className="font-mono text-sm text-slate-700 whitespace-pre leading-relaxed">{codeContent}</pre>
+                  </div>
+                );
+              }
+              
+              // Regular code blocks
               return !inline && match ? (
-                <div className="relative group my-3">
-                  <div className="absolute -top-3 left-3 px-2 py-0.5 bg-slate-700 text-xs text-slate-300 rounded-t-md font-mono">{match[1]}</div>
+                <div className="relative group my-4">
+                  <div className="absolute -top-2.5 left-3 px-2 py-0.5 bg-slate-700 text-[10px] text-slate-300 rounded font-mono uppercase tracking-wide">{language}</div>
                   <button
                     onClick={() => copyToClipboard(codeContent)}
                     className="absolute right-2 top-2 p-1.5 rounded-lg bg-slate-600/80 hover:bg-slate-500 text-slate-200 opacity-0 group-hover:opacity-100 transition-all duration-200"
@@ -661,44 +708,64 @@ export default function InstructAgentPage() {
                   <SyntaxHighlighter
                     {...props}
                     style={vscDarkPlus}
-                    language={match[1]}
+                    language={language}
                     PreTag="div"
-                    className="rounded-xl !mt-0 !bg-gradient-to-br !from-slate-800 !to-slate-900"
+                    className="rounded-xl !mt-0 !bg-gradient-to-br !from-slate-800 !to-slate-900 text-sm"
                     customStyle={{
                       borderRadius: '0.75rem',
-                      padding: '1.25rem',
-                      paddingTop: '1.75rem',
+                      padding: '1rem',
+                      paddingTop: '1.5rem',
+                      fontSize: '13px',
                     }}
                   >
                     {codeContent.replace(/\n$/, '')}
                   </SyntaxHighlighter>
                 </div>
               ) : (
-                <code {...props} className="bg-gradient-to-r from-indigo-100/70 to-blue-100/50 text-indigo-800 rounded-md px-1.5 py-0.5 text-sm font-medium border border-indigo-200/40">
+                <code {...props} className="bg-slate-100 text-slate-800 rounded px-1.5 py-0.5 text-sm font-mono">
                   {children}
                 </code>
               );
             },
-            // Handle tables with proper structure
+            // Handle pre blocks (for ASCII diagrams without language tag)
+            pre: ({ children, ...props }) => {
+              // Check if it's a code element already processed
+              if (React.isValidElement(children) && (children as React.ReactElement).type === 'code') {
+                return <>{children}</>;
+              }
+              
+              // Plain pre block - render as ASCII art
+              const content = typeof children === 'string' ? children : '';
+              return (
+                <div className="my-4 p-4 bg-slate-50 rounded-xl border border-slate-200 overflow-x-auto">
+                  <pre className="font-mono text-sm text-slate-700 whitespace-pre leading-relaxed">{content || children}</pre>
+                </div>
+              );
+            },
+            // Handle tables
             table: ({ children }) => (
-              <div className="overflow-x-auto my-4">
-                <table className="w-full border-collapse rounded-xl overflow-hidden border border-indigo-200/40 shadow-sm table-auto">{children}</table>
+              <div className="overflow-x-auto my-4 rounded-lg border border-slate-200">
+                <table className="w-full border-collapse text-sm">{children}</table>
               </div>
             ),
             thead: ({ children }) => (
-              <thead className="bg-gradient-to-r from-indigo-50 to-blue-50">{children}</thead>
+              <thead className="bg-slate-50">{children}</thead>
             ),
             tbody: ({ children }) => (
-              <tbody className="divide-y divide-indigo-100/40">{children}</tbody>
+              <tbody className="divide-y divide-slate-100">{children}</tbody>
             ),
             tr: ({ children }) => (
-              <tr className="hover:bg-indigo-50/30 transition-colors">{children}</tr>
+              <tr className="hover:bg-slate-50/50 transition-colors">{children}</tr>
             ),
             th: ({ children }) => (
-              <th className="bg-gradient-to-r from-indigo-100 to-blue-100 text-slate-800 font-semibold text-left px-4 py-2.5 border-b-2 border-indigo-300/50 whitespace-nowrap">{children}</th>
+              <th className="text-slate-700 font-semibold text-left px-3 py-2 border-b border-slate-200">{children}</th>
             ),
             td: ({ children }) => (
-              <td className="px-4 py-2.5 border-b border-indigo-100/40 text-slate-700 align-top">{children}</td>
+              <td className="px-3 py-2 text-slate-600">{children}</td>
+            ),
+            // Handle horizontal rules
+            hr: () => (
+              <hr className="my-6 border-t border-slate-200" />
             ),
           }}
           remarkPlugins={[remarkGfm]}
@@ -839,21 +906,34 @@ export default function InstructAgentPage() {
               {messages.map((msg, idx) => (
                 <div
                   key={idx}
-                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}
                 >
+                  {/* 助手头像 */}
+                  {msg.role === 'assistant' && (
+                    <div className="flex-shrink-0 mr-3 mt-1">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-500 flex items-center justify-center shadow-sm">
+                        <span className="material-icons-outlined text-white text-sm">smart_toy</span>
+                      </div>
+                    </div>
+                  )}
                   <div
-                    className={`group relative p-4 rounded-2xl max-w-[80%] transition-all duration-200 ${msg.role === 'user' 
-                        ? 'bg-gradient-to-r from-indigo-500 via-blue-500 to-indigo-600 text-white border-none user-message shadow-lg shadow-indigo-200/50' 
+                    className={`group relative max-w-[75%] transition-all duration-200 ${
+                      msg.role === 'user' 
+                        ? 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-2xl rounded-br-md px-4 py-3 shadow-md shadow-indigo-200/40' 
                         : msg.role === 'system'
-                        ? 'bg-slate-100/80 text-slate-700 border border-slate-200/60'
-                        : 'bg-white/90 backdrop-blur-sm text-slate-800 border border-indigo-100/60 shadow-lg shadow-indigo-100/30 hover:shadow-xl hover:shadow-indigo-100/40 assistant-message markdown-content'
+                        ? 'bg-slate-100/90 text-slate-600 rounded-xl px-4 py-2 text-sm border border-slate-200/60'
+                        : 'bg-white text-slate-800 rounded-2xl rounded-bl-md px-5 py-4 shadow-sm border border-slate-100 hover:shadow-md'
                     }`}
                   >
                     {msg.role !== 'system' && (
                       <button
                         onClick={() => copyToClipboard(msg.content)}
-                        className="absolute right-2 top-2 p-1.5 rounded-lg bg-slate-900/10 hover:bg-slate-900/20 text-current opacity-0 group-hover:opacity-100 transition-all duration-200"
-                        title="Copy message"
+                        className={`absolute right-2 top-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200 ${
+                          msg.role === 'user' 
+                            ? 'bg-white/20 hover:bg-white/30 text-white' 
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-500'
+                        }`}
+                        title="复制"
                       >
                         <span className="material-icons-outlined text-sm">content_copy</span>
                       </button>
@@ -861,9 +941,17 @@ export default function InstructAgentPage() {
                     {msg.role === 'assistant' ? (
                       <MessageContent content={msg.content} />
                     ) : (
-                      <div className="whitespace-pre-wrap">{msg.content}</div>
+                      <div className="whitespace-pre-wrap text-[15px]">{msg.content}</div>
                     )}
                   </div>
+                  {/* 用户头像 */}
+                  {msg.role === 'user' && (
+                    <div className="flex-shrink-0 ml-3 mt-1">
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center shadow-sm">
+                        <span className="material-icons-outlined text-white text-sm">person</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
               {isLoading && (

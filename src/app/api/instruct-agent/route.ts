@@ -4,7 +4,8 @@ import { ChatMessage } from '@/lib/types';
 import { getToolById } from '@/lib/instruct-agent/tools-service';
 import { getMCPServerById } from '@/lib/mcp/servers';
 import { MCPClient, mcpToolToOpenAIFunction, parseOpenAIFunctionName, mcpResultToText } from '@/lib/mcp/client';
-import { MCPTool } from '@/lib/mcp/types';
+import { MCPTool, MCPToolCallResult } from '@/lib/mcp/types';
+import { ARXIV_TOOLS, callArxivTool } from '@/lib/mcp/arxiv-client';
 
 // Using Edge runtime for improved performance with streaming responses
 export const runtime = 'edge';
@@ -67,15 +68,29 @@ export async function POST(req: NextRequest) {
 
     // 准备 MCP 工具
     const mcpTools: { type: 'function'; function: { name: string; description?: string; parameters: Record<string, unknown> } }[] = [];
-    const mcpServerMap = new Map<string, { client: MCPClient; tools: MCPTool[] }>();
+    const mcpServerMap = new Map<string, { client: MCPClient | null; tools: MCPTool[]; isLocal: boolean }>();
     
     // 连接启用的 MCP 服务器并获取工具
     const enabledServerIds: string[] = Array.isArray(enabledMCPServers) ? enabledMCPServers : [];
     for (const serverId of enabledServerIds) {
+      // 处理本地 arXiv 工具
+      if (serverId === 'arxiv') {
+        mcpServerMap.set(serverId, { client: null, tools: ARXIV_TOOLS, isLocal: true });
+        
+        // 将 arXiv 工具转换为 OpenAI 函数格式
+        for (const mcpTool of ARXIV_TOOLS) {
+          mcpTools.push(mcpToolToOpenAIFunction(serverId, mcpTool));
+        }
+        
+        console.log(`[MCP] Local server ${serverId}: ${ARXIV_TOOLS.length} tools loaded`);
+        continue;
+      }
+      
+      // 处理远程 MCP 服务器
       const client = await getOrCreateMCPClient(serverId);
       if (client) {
         const tools = client.getTools();
-        mcpServerMap.set(serverId, { client, tools });
+        mcpServerMap.set(serverId, { client, tools, isLocal: false });
         
         // 将 MCP 工具转换为 OpenAI 函数格式
         for (const mcpTool of tools) {
@@ -91,6 +106,10 @@ export async function POST(req: NextRequest) {
       : systemPrompt;
     console.log(`[Instruct Agent] Tool: ${selectedTool.name}, System Prompt: ${systemPromptPreview} (${systemPrompt.length} chars)`);
     console.log(`[Instruct Agent] MCP Tools available: ${mcpTools.length}`);
+    console.log(`[Instruct Agent] Enabled MCP Servers received: ${JSON.stringify(enabledServerIds)}`);
+    if (mcpTools.length > 0) {
+      console.log(`[Instruct Agent] MCP Tool names:`, mcpTools.map(t => t.function.name));
+    }
     
     
     // Check if prompt contains document context
@@ -394,12 +413,22 @@ export async function POST(req: NextRequest) {
                 })}\n\n`));
                 
                 // 执行工具调用
-                const result = await serverInfo.client.callTool({
-                  name: toolName,
-                  arguments: args,
-                });
+                let result: MCPToolCallResult;
                 
-                const resultText = mcpResultToText(result);
+                if (serverInfo.isLocal && serverId === 'arxiv') {
+                  // 本地 arXiv 工具调用
+                  result = await callArxivTool(toolName, args);
+                } else if (serverInfo.client) {
+                  // 远程 MCP 服务器调用
+                  result = await serverInfo.client.callTool({
+                    name: toolName,
+                    arguments: args,
+                  });
+                } else {
+                  throw new Error(`No client available for server: ${serverId}`);
+                }
+                
+                const resultText = result.content?.map(c => c.text).filter(Boolean).join('\n\n') || mcpResultToText(result);
                 console.log(`[MCP] Tool result (${serverId}/${toolName}):`, resultText.substring(0, 200));
                 
                 // 发送工具调用完成状态

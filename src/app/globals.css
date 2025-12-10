@@ -367,14 +367,65 @@ select:focus {
   }
 }
 
+@keyframes slideInFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .animate-in {
-  animation: slideIn 0.15s ease-out;
+  animation-duration: 0.3s;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
 }
 
 .fade-in {
   animation-name: fadeIn;
 }
 
+.slide-in-from-bottom-2 {
+  animation-name: slideInFromBottom;
+}
+
 .slide-in-from-top-2 {
   --tw-enter-translate-y: -0.5rem;
+}
+
+/* Mermaid 图表容器样式 */
+.mermaid-diagram {
+  display: flex;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 简化的 prose 样式覆盖 */
+.prose.prose-slate p {
+  color: #334155;
+}
+
+.prose.prose-slate strong {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+/* 用户消息气泡内部选择样式 */
+.user-message ::selection {
+  background-color: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+/* 助手消息气泡内部选择样式 */
+.assistant-message ::selection {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: #1e293b;
 }

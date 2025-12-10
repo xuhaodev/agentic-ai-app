@@ -11,6 +11,17 @@ import { MCPServerConfig } from './types';
  */
 export const MCP_SERVERS: MCPServerConfig[] = [
   {
+    id: 'arxiv',
+    name: 'arXiv',
+    description: 'arXiv 学术论文搜索和获取',
+    endpoint: 'local://arxiv',  // 本地处理，无需远程端点
+    icon: '📚',
+    enabled: false,
+    auth: {
+      type: 'none',
+    },
+  },
+  {
     id: 'microsoft-learn',
     name: 'Microsoft Learn',
     description: 'Microsoft 官方文档和代码示例搜索',

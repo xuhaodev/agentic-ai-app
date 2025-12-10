@@ -15,6 +15,7 @@
     "autoprefixer": "10.4.15",
     "llamaindex": "^0.9.11",
     "lucide-react": "^0.482.0",
+    "mermaid": "^11.12.2",
     "next": "^15.2.2",
     "openai": "^4.87.3",
     "pdfjs-dist": "^5.4.394",

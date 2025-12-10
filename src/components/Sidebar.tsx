@@ -19,11 +19,23 @@ const MicrosoftIcon: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 );
 
+// arXiv 图标 SVG 组件
+const ArxivIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none">
+    <path d="M12 2L2 7l10 5 10-5-10-5z" fill="#B31B1B"/>
+    <path d="M2 17l10 5 10-5" stroke="#B31B1B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M2 12l10 5 10-5" stroke="#B31B1B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 // 根据服务器 ID 渲染图标
 const renderServerIcon = (serverId: string, icon?: string) => {
   // 为特定服务器使用自定义图标
   if (serverId === 'microsoft-learn') {
     return <MicrosoftIcon className="w-4 h-4" />;
+  }
+  if (serverId === 'arxiv') {
+    return <ArxivIcon className="w-4 h-4" />;
   }
   // 默认使用配置的图标或插头 emoji
   return icon || '🔌';

@@ -114,6 +114,7 @@ export const SidebarProvider = ({ children }: { children: ReactNode }) => {
       return;
     }
 
+    console.log(`[MCP] Connecting to server: ${serverId}`);
     updateServerState(serverId, { isConnecting: true, error: undefined });
 
     try {
@@ -131,6 +132,11 @@ export const SidebarProvider = ({ children }: { children: ReactNode }) => {
 
       const data = await response.json();
       
+      console.log(`[MCP] Server ${serverId} connected successfully:`, {
+        toolCount: data.tools?.length || 0,
+        tools: data.tools?.map((t: MCPTool) => t.name) || [],
+      });
+      
       updateServerState(serverId, {
         isConnected: true,
         isConnecting: false,
@@ -138,7 +144,7 @@ export const SidebarProvider = ({ children }: { children: ReactNode }) => {
         lastConnected: new Date(),
       });
     } catch (error) {
-      console.error(`Failed to connect to MCP server ${serverId}:`, error);
+      console.error(`[MCP] Failed to connect to server ${serverId}:`, error);
       updateServerState(serverId, {
         isConnected: false,
         isConnecting: false,
