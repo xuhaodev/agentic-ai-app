@@ -35,6 +35,15 @@ export default function CustomSelect({
 
   const selectedOption = options.find(opt => opt.value === value);
 
+  const isEventInsideMenu = (event: Event) => {
+    const path = event.composedPath();
+    const menuEl = menuRef.current;
+    const containerEl = containerRef.current;
+    const insideMenu = menuEl ? path.includes(menuEl) : false;
+    const insideContainer = containerEl ? path.includes(containerEl) : false;
+    return insideMenu || insideContainer;
+  };
+
   // 确保组件已挂载（用于 Portal）
   useEffect(() => {
     setMounted(true);
@@ -53,39 +62,32 @@ export default function CustomSelect({
   }, [isOpen]);
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      // 检查点击是否在容器外部（包括菜单）
-      if (
-        containerRef.current && 
-        !containerRef.current.contains(target) &&
-        menuRef.current &&
-        !menuRef.current.contains(target)
-      ) {
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!isEventInsideMenu(event)) {
         setIsOpen(false);
       }
     };
 
-    // 使用 mouseup 而不是 mousedown，确保点击事件完整触发
+    // 使用 pointer 级事件，确保与滚动条拖拽的交互不会误判为外部点击
     if (isOpen) {
-      document.addEventListener('mouseup', handleClickOutside);
-      return () => document.removeEventListener('mouseup', handleClickOutside);
+      document.addEventListener('pointerdown', handlePointerDown);
+      return () => document.removeEventListener('pointerdown', handlePointerDown);
     }
-  }, [isOpen]);
+  }, [isEventInsideMenu, isOpen]);
 
   // 处理滚动时关闭菜单
   useEffect(() => {
-    const handleScroll = () => {
-      if (isOpen) {
-        setIsOpen(false);
-      }
+    const handleScroll = (event: Event) => {
+      // 允许在下拉列表内部滚动而不关闭菜单
+      if (isEventInsideMenu(event)) return;
+      if (isOpen) setIsOpen(false);
     };
 
     if (isOpen) {
       window.addEventListener('scroll', handleScroll, true);
       return () => window.removeEventListener('scroll', handleScroll, true);
     }
-  }, [isOpen]);
+  }, [isEventInsideMenu, isOpen]);
 
   const handleSelect = (optionValue: string) => {
     onChange(optionValue);
