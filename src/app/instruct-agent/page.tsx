@@ -592,10 +592,164 @@ export default function InstructAgentPage() {
     }
   };
 
+  // 预处理内容，自动检测并格式化代码块
+  const preprocessContent = (content: string): string => {
+    if (!content) return '';
+    
+    // 代码模式检测正则
+    const codePatterns = [
+      // Python 导入和函数定义
+      /^(import\s+\w+|from\s+\w+\s+import|def\s+\w+\s*\(|class\s+\w+[\s:(])/m,
+      // 变量赋值后跟方法调用链
+      /^\w+\s*=\s*\w+\.(read_sql|read_csv|DataFrame|create_engine|connect)\(/m,
+      // 常见 Python 方法调用
+      /\.(expect_\w+|validate|fit|predict|transform)\(/,
+      // SQL 语句
+      /^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER)\s+/im,
+    ];
+    
+    // 检查一段文本是否看起来像代码
+    const looksLikeCode = (text: string): boolean => {
+      const lines = text.trim().split('\n');
+      if (lines.length < 2) return false;
+      
+      let codeIndicators = 0;
+      
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        
+        // 检测代码特征
+        if (/^(import|from|def|class|if|for|while|try|except|with|return|raise)\s/.test(trimmed)) codeIndicators++;
+        if (/^(const|let|var|function|async|await|export|import)\s/.test(trimmed)) codeIndicators++;
+        if (/^\w+\s*=\s*.+$/.test(trimmed) && !/^[A-Z]/.test(trimmed)) codeIndicators++;
+        if (/\.(read_\w+|to_\w+|expect_\w+|validate|fit|predict)\(/.test(trimmed)) codeIndicators++;
+        if (/^\s*(#|\/\/|\/\*)/.test(trimmed)) codeIndicators++;
+        if (/\)\s*$/.test(trimmed) || /:\s*$/.test(trimmed)) codeIndicators++;
+      }
+      
+      // 如果超过 40% 的非空行看起来像代码
+      const nonEmptyLines = lines.filter(l => l.trim()).length;
+      return nonEmptyLines > 0 && (codeIndicators / nonEmptyLines) > 0.4;
+    };
+    
+    // 检测语言
+    const detectLanguage = (text: string): string => {
+      if (/^(import\s+\w+|from\s+\w+\s+import|def\s+|class\s+\w+[:\(])/m.test(text)) return 'python';
+      if (/^(const|let|var|function|import\s+.+from|export\s+)/m.test(text)) return 'javascript';
+      if (/^(SELECT|INSERT|UPDATE|DELETE|CREATE)\s+/im.test(text)) return 'sql';
+      if (/^(npm|yarn|pip|apt|brew|curl|wget)\s+/m.test(text)) return 'bash';
+      return 'python'; // 默认 Python
+    };
+    
+    let result = content;
+    
+    // 处理已有的代码块标记但格式不完整的情况
+    // 例如: ```python 后面没有换行
+    result = result.replace(/```(\w+)\s+(?!\n)/g, '```$1\n');
+    
+    // 查找可能的代码段落（连续的代码行）
+    const lines = result.split('\n');
+    const processed: string[] = [];
+    let i = 0;
+    
+    while (i < lines.length) {
+      const line = lines[i];
+      
+      // 如果已经在代码块中，跳过
+      if (line.trim().startsWith('```')) {
+        processed.push(line);
+        i++;
+        // 继续直到代码块结束
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+          processed.push(lines[i]);
+          i++;
+        }
+        if (i < lines.length) {
+          processed.push(lines[i]);
+          i++;
+        }
+        continue;
+      }
+      
+      // 检测代码开始的特征
+      const trimmed = line.trim();
+      const isCodeStart = codePatterns.some(p => p.test(trimmed)) ||
+        (trimmed.startsWith('#') && /^#\s*(依赖|示例|代码|安装)/.test(trimmed) === false && /^#\s*\w+/.test(trimmed));
+      
+      if (isCodeStart) {
+        // 收集连续的代码行
+        const codeLines: string[] = [];
+        let j = i;
+        
+        while (j < lines.length) {
+          const currentLine = lines[j];
+          const currentTrimmed = currentLine.trim();
+          
+          // 代码块结束条件：遇到空行后跟非代码文本，或明显的标题/列表
+          if (!currentTrimmed) {
+            // 检查下一行是否还是代码
+            if (j + 1 < lines.length) {
+              const nextLine = lines[j + 1].trim();
+              const nextIsCode = codePatterns.some(p => p.test(nextLine)) ||
+                /^[a-z_]\w*\s*[=\(.]/.test(nextLine) ||
+                /^\s/.test(lines[j + 1]); // 有缩进
+              
+              if (!nextIsCode && nextLine && !/^[#'"\/]/.test(nextLine)) {
+                break;
+              }
+            }
+            codeLines.push(currentLine);
+            j++;
+            continue;
+          }
+          
+          // 明确不是代码的行
+          if (/^(\d+\.\s+|\*\s+|-\s+|>\s+)/.test(currentTrimmed) && !/^#/.test(currentTrimmed)) {
+            // 可能是列表，但如果是注释中的列表则继续
+            if (!codeLines.some(l => l.trim().startsWith('#'))) {
+              break;
+            }
+          }
+          
+          // 检查是否是标题（中文或英文开头的句子，不含代码特征）
+          if (/^[A-Z\u4e00-\u9fa5]/.test(currentTrimmed) && 
+              currentTrimmed.length < 60 &&
+              !/[=\(\)\[\]{}:;,]/.test(currentTrimmed) &&
+              !/\.(py|js|ts|sql|sh)$/.test(currentTrimmed)) {
+            break;
+          }
+          
+          codeLines.push(currentLine);
+          j++;
+        }
+        
+        // 如果收集到足够的代码行
+        if (codeLines.length >= 2 && looksLikeCode(codeLines.join('\n'))) {
+          const lang = detectLanguage(codeLines.join('\n'));
+          processed.push('```' + lang);
+          processed.push(...codeLines.map(l => l.trimEnd()));
+          processed.push('```');
+          processed.push('');
+          i = j;
+          continue;
+        }
+      }
+      
+      processed.push(line);
+      i++;
+    }
+    
+    return processed.join('\n');
+  };
+
   // 更新 MessageContent 组件，支持更好的 Markdown 渲染和 Mermaid 图表
   const MessageContent = ({ content }: { content: string }) => {
     // Ensure content is always a string
     const safeContent = typeof content === 'string' ? content : '';
+    
+    // 预处理内容，自动检测代码块
+    const processedContent = preprocessContent(safeContent);
     
     return (
       <div className="prose prose-sm max-w-none prose-slate">
@@ -694,34 +848,94 @@ export default function InstructAgentPage() {
                 );
               }
               
-              // Regular code blocks
-              return !inline && match ? (
-                <div className="relative group my-4">
-                  <div className="absolute -top-2.5 left-3 px-2 py-0.5 bg-slate-700 text-[10px] text-slate-300 rounded font-mono uppercase tracking-wide">{language}</div>
-                  <button
-                    onClick={() => copyToClipboard(codeContent)}
-                    className="absolute right-2 top-2 p-1.5 rounded-lg bg-slate-600/80 hover:bg-slate-500 text-slate-200 opacity-0 group-hover:opacity-100 transition-all duration-200"
-                    title="Copy code"
-                  >
-                    <span className="material-icons-outlined text-sm">content_copy</span>
-                  </button>
-                  <SyntaxHighlighter
-                    {...props}
-                    style={vscDarkPlus}
-                    language={language}
-                    PreTag="div"
-                    className="rounded-xl !mt-0 !bg-gradient-to-br !from-slate-800 !to-slate-900 text-sm"
-                    customStyle={{
-                      borderRadius: '0.75rem',
-                      padding: '1rem',
-                      paddingTop: '1.5rem',
-                      fontSize: '13px',
-                    }}
-                  >
-                    {codeContent.replace(/\n$/, '')}
-                  </SyntaxHighlighter>
-                </div>
-              ) : (
+              // 检测是否为多行代码块（非内联）
+              const isMultiLine = !inline && (codeContent.includes('\n') || codeContent.length > 80);
+              
+              // 自动检测语言（当没有明确指定时）
+              const detectLanguage = (code: string): string => {
+                // Python 特征
+                if (/^(import |from .+ import |def |class |if __name__|print\(|pd\.|np\.)/.test(code) ||
+                    /\.(read_csv|DataFrame|groupby|merge|to_csv)\(/.test(code) ||
+                    /(sklearn|pandas|numpy|matplotlib|lightgbm|tensorflow|torch)/.test(code)) {
+                  return 'python';
+                }
+                // JavaScript/TypeScript 特征
+                if (/^(const |let |var |function |import .+ from|export |async |await )/.test(code) ||
+                    /=>\s*[{(]/.test(code) || /\.(map|filter|reduce|forEach)\(/.test(code)) {
+                  return 'javascript';
+                }
+                // SQL 特征
+                if (/^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|FROM|WHERE|JOIN)\s/i.test(code)) {
+                  return 'sql';
+                }
+                // Shell 特征
+                if (/^(npm |yarn |pip |apt |brew |curl |wget |cd |ls |mkdir |rm |chmod |sudo )/.test(code) ||
+                    /^\$\s/.test(code)) {
+                  return 'bash';
+                }
+                // JSON 特征
+                if (/^\s*[{\[]/.test(code) && /[}\]]\s*$/.test(code)) {
+                  try {
+                    JSON.parse(code);
+                    return 'json';
+                  } catch {}
+                }
+                return '';
+              };
+              
+              const detectedLang = language || (isMultiLine ? detectLanguage(codeContent) : '');
+              
+              // 多行代码块渲染（有语言或检测到语言）
+              if (isMultiLine && detectedLang) {
+                return (
+                  <div className="relative group my-4">
+                    <div className="absolute -top-2.5 left-3 px-2 py-0.5 bg-slate-700 text-[10px] text-slate-300 rounded font-mono uppercase tracking-wide">{detectedLang}</div>
+                    <button
+                      onClick={() => copyToClipboard(codeContent)}
+                      className="absolute right-2 top-2 p-1.5 rounded-lg bg-slate-600/80 hover:bg-slate-500 text-slate-200 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                      title="Copy code"
+                    >
+                      <span className="material-icons-outlined text-sm">content_copy</span>
+                    </button>
+                    <SyntaxHighlighter
+                      {...props}
+                      style={vscDarkPlus}
+                      language={detectedLang}
+                      PreTag="div"
+                      className="rounded-xl !mt-0 !bg-gradient-to-br !from-slate-800 !to-slate-900 text-sm"
+                      customStyle={{
+                        borderRadius: '0.75rem',
+                        padding: '1rem',
+                        paddingTop: '1.5rem',
+                        fontSize: '13px',
+                      }}
+                    >
+                      {codeContent.replace(/\n$/, '')}
+                    </SyntaxHighlighter>
+                  </div>
+                );
+              }
+              
+              // 多行代码块但无法检测语言 - 使用通用代码块样式
+              if (isMultiLine) {
+                return (
+                  <div className="relative group my-4">
+                    <button
+                      onClick={() => copyToClipboard(codeContent)}
+                      className="absolute right-2 top-2 p-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 opacity-0 group-hover:opacity-100 transition-all duration-200"
+                      title="Copy code"
+                    >
+                      <span className="material-icons-outlined text-sm">content_copy</span>
+                    </button>
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 overflow-x-auto">
+                      <pre className="font-mono text-[13px] text-slate-700 whitespace-pre leading-relaxed">{codeContent}</pre>
+                    </div>
+                  </div>
+                );
+              }
+              
+              // 内联代码
+              return (
                 <code {...props} className="bg-slate-100 text-slate-800 rounded px-1.5 py-0.5 text-sm font-mono">
                   {children}
                 </code>
@@ -770,7 +984,7 @@ export default function InstructAgentPage() {
           }}
           remarkPlugins={[remarkGfm]}
         >
-          {safeContent || ' '}
+          {processedContent || ' '}
         </ReactMarkdown>
       </div>
     );
