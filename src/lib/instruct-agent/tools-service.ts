@@ -1,6 +1,11 @@
 const TOOLS_CACHE_TTL_MS = Number(process.env.GITHUB_TOOLS_CACHE_TTL_MS ?? 300000);
-const GIST_ID = process.env.GITHUB_TOOLS_GIST_ID ?? '614481beb4d227eeebfd4497fe504c71';
+const GIST_URL = process.env.GITHUB_TOOLS_GIST_URL ?? 'https://gist.github.com/haxudev/614481beb4d227eeebfd4497fe504c71';
 const GITHUB_API_BASE = 'https://api.github.com';
+
+function extractGistId(url: string): string {
+  const match = url.match(/gist\.github\.com\/[^\/]+\/([a-f0-9]+)/i);
+  return match ? match[1] : url;
+}
 
 export interface ToolDefinition {
   id: string;
@@ -35,11 +40,12 @@ async function fetchGistFiles(refresh = false): Promise<ToolDefinition[]> {
     return cache.tools;
   }
 
-  if (!GIST_ID) {
-    throw new Error('GITHUB_TOOLS_GIST_ID is not configured.');
+  if (!GIST_URL) {
+    throw new Error('GITHUB_TOOLS_GIST_URL is not configured.');
   }
 
-  const url = `${GITHUB_API_BASE}/gists/${GIST_ID}`;
+  const gistId = extractGistId(GIST_URL);
+  const url = `${GITHUB_API_BASE}/gists/${gistId}`;
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'agentic-ai-app',
